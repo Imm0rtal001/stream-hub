@@ -1,0 +1,179 @@
+/* Knox Streams — shared tokens.
+   Palette: a film-archive control room, not a SaaS dashboard.
+   Ink background, brass/amber marquee accent, teal for "live" signal. */
+:root {
+  --ink: #12141a;
+  --ink-raised: #1a1d25;
+  --ink-raised-2: #20242e;
+  --hairline: #2c313d;
+  --text: #edeef2;
+  --text-muted: #9096a6;
+  --text-faint: #5b6172;
+  --amber: #e8a33d;
+  --amber-dim: #6b5228;
+  --teal: #49c8b6;
+  --danger: #e1604d;
+  --radius: 3px;
+  --font-display: "Bebas Neue", "Oswald", Impact, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--amber);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+  font-weight: 400;
+  margin: 0;
+}
+
+code,
+.mono {
+  font-family: var(--font-mono);
+}
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  border: 1px solid var(--hairline);
+  background: var(--ink-raised-2);
+  color: var(--text);
+  padding: 0.65em 1.1em;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.btn:hover {
+  border-color: var(--text-muted);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #1a1305;
+  font-weight: 600;
+}
+.btn-primary:hover {
+  background: #f0b458;
+  border-color: #f0b458;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.status-dot.on {
+  background: var(--teal);
+  box-shadow: 0 0 6px var(--teal);
+}
+.status-dot.off {
+  background: var(--text-faint);
+}
+.status-dot.error {
+  background: var(--danger);
+  box-shadow: 0 0 6px var(--danger);
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 22px;
+  flex: none;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.switch .track {
+  position: absolute;
+  inset: 0;
+  background: var(--ink-raised-2);
+  border: 1px solid var(--hairline);
+  border-radius: 22px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.switch .track::before {
+  content: "";
+  position: absolute;
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  top: 3px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.switch input:checked + .track {
+  background: var(--amber-dim);
+  border-color: var(--amber);
+}
+.switch input:checked + .track::before {
+  transform: translateX(16px);
+  background: var(--amber);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+::selection {
+  background: var(--amber-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Knox — Control Centre</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css" />
+<link rel="stylesheet" href="/admin/admin.css" />
+</head>
+<body>
+
+  <section id="gate" class="gate">
+    <div class="gate-box">
+      <h1>KNOX <span>CONTROL CENTRE</span></h1>
+      <p class="hint">Enter the admin token to continue. It's checked against <code>ADMIN_TOKEN</code> on the server.</p>
+      <form id="gateForm">
+        <input type="password" id="tokenInput" placeholder="admin token" autocomplete="off" />
+        <button class="btn btn-primary" type="submit">Enter</button>
+      </form>
+      <p class="gate-error" id="gateError" role="alert"></p>
+    </div>
+  </section>
+
+  <div id="app" class="app hidden">
+    <header class="bar">
+      <h1>KNOX <span>CONTROL CENTRE</span></h1>
+      <div class="bar-actions">
+        <span class="hint mono" id="lastRefreshed"></span>
+        <button class="btn" id="refreshBtn" type="button">Refresh</button>
+        <button class="btn" id="logoutBtn" type="button">Lock</button>
+      </div>
+    </header>
+
+    <div id="errorBanner" class="error-banner hidden" role="alert"></div>
+
+    <main class="panels">
+      <section class="panel" aria-label="Global settings">
+        <h2>Global settings</h2>
+        <p class="hint">Apply to every install that doesn't override them via its own <code>/configure</code> link.</p>
+        <div class="settings-grid">
+          <label class="field">
+            <span>Timeout per provider (ms)</span>
+            <input type="number" id="s_timeoutMs" min="1000" step="1000" />
+          </label>
+          <label class="field">
+            <span>Minimum size (GB)</span>
+            <input type="number" id="s_minSizeGB" min="0" step="0.5" />
+          </label>
+          <label class="field">
+            <span>Max results per provider</span>
+            <input type="number" id="s_maxPerProvider" min="1" step="1" />
+          </label>
+          <label class="field">
+            <span>Max total results</span>
+            <input type="number" id="s_maxTotal" min="1" step="1" />
+          </label>
+          <label class="field">
+            <span>Sort by</span>
+            <select id="s_sortBy">
+              <option value="quality">Quality</option>
+              <option value="size">Size</option>
+            </select>
+          </label>
+        </div>
+        <button class="btn btn-primary" id="saveSettingsBtn" type="button">Save settings</button>
+        <span class="save-msg" id="settingsSaveMsg"></span>
+      </section>
+
+      <section class="panel" aria-label="Providers">
+        <div class="panel-heading">
+          <h2>Providers <span class="mono hint" id="providerCount"></span></h2>
+        </div>
+        <p class="hint">Toggling a provider here edits <code>manifest.json</code> directly — the same file Nuvio
+          reads, so this switch controls both platforms' default state.</p>
+        <div class="table-wrap">
+          <table id="providerTable">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Provider</th>
+                <th>Types</th>
+                <th>Load</th>
+                <th>Last test</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="providerRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/admin/admin.js"></script>
+</body>
+</html>

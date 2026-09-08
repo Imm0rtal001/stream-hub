@@ -1,0 +1,8 @@
+{
+  "timeoutMs": 15000,
+  "minSizeGB": 0,
+  "maxPerProvider": 8,
+  "maxTotal": 60,
+  "sortBy": "quality",
+  "concurrency": 8
+}

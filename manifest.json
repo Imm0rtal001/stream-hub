@@ -1,0 +1,73 @@
+{
+  "name": "StreamHub Providers",
+  "version": "1.0.0",
+  "description": "Nuvio local scrapers, also served as a Stremio addon by StreamHub",
+  "scrapers": [
+    {
+      "id": "4khdhub",
+      "name": "4Khdhub.",
+      "description": "Provider: 4kHdHub | Multi-lang",
+      "version": "1.5.0",
+      "author": "Imm0rtal001",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/4khdhub.js",
+      "enabled": true,
+      "hasSettings": true,
+      "formats": ["mkv", "m3u8", "mp4"],
+      "logo": "https://i.postimg.cc/DZpW6Xfb/4khdhub.png",
+      "contentLanguage": ["en", "hi"]
+    },
+    {
+      "id": "CineFreak",
+      "name": "CineFreak.",
+      "description": "Provider: CineFreak | Bangla, English, Hindi • Nuvio TV / Fire TV compatible",
+      "version": "3.3.0",
+      "author": "Imm0rtal001",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/CineFreak.js",
+      "enabled": true,
+      "formats": ["mkv", "mp4"],
+      "logo": "",
+      "contentLanguage": ["bn", "hi", "en"]
+    },
+    {
+      "id": "dahmermovies",
+      "name": "Dahmermovies.",
+      "description": "Only works on Android TV • Nuvio TV / Fire TV compatible",
+      "version": "1.0.1",
+      "author": "Imm0rtal001",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/dahmermovies.js",
+      "enabled": true,
+      "formats": ["mp4", "mkv", "m3u8"],
+      "logo": "https://i.postimg.cc/hGt3dV6Z/dhamermovies.png",
+      "contentLanguage": ["en"]
+    },
+    {
+      "id": "moviesHunt",
+      "name": "MoviesHunt.",
+      "description": "Provider: MoviesHunt | Multi-Lang • Nuvio TV / Fire TV compatible",
+      "version": "1.5.0",
+      "author": "Imm0rtal001",
+      "supportedTypes": ["movie"],
+      "filename": "providers/MoviesHunt.js",
+      "enabled": true,
+      "formats": ["m3u8"],
+      "logo": "",
+      "contentLanguage": ["en"]
+    },
+    {
+      "id": "moviesdrive",
+      "name": "MoviesDrive.",
+      "description": "MoviesDrive - Movies and TV shows with multiple streaming servers • Nuvio TV / Fire TV compatible",
+      "version": "2.0.0",
+      "author": "Imm0rtal001",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/moviesdrive.js",
+      "enabled": true,
+      "formats": ["mp4", "mkv", "m3u8"],
+      "logo": "https://i.postimg.cc/bwDbhq9q/moviesdrive.png",
+      "contentLanguage": ["en", "hi"]
+    }
+  ]
+}

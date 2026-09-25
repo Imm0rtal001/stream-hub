@@ -213,17 +213,36 @@ function parseLinks(html) {
 }
 
 // Main Dahmer Movies fetcher function
+// Build a few plausible folder-name variants for a title, since the
+// site's actual folder names don't always match TMDB's title exactly
+// (apostrophes, ampersands, dashes and colons are handled inconsistently).
+function titleVariants(title) {
+    const base = title.trim();
+    const variants = new Set([
+        base.replace(/:/g, ''),                                   // original behavior
+        base.replace(/[:]/g, '').replace(/&/g, 'and'),             // "&" -> "and"
+        base.replace(/[:'’]/g, ''),                                // drop apostrophes too
+        base.replace(/[^\w\s-]/g, ''),                             // strip all punctuation
+    ].map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean));
+    return [...variants];
+}
+
 function invokeDahmerMovies(title, year, season = null, episode = null) {
     console.log(`[DahmerMovies] Searching for: ${title} (${year})${season ? ` Season ${season}` : ''}${episode ? ` Episode ${episode}` : ''}`);
-    
-    // Construct URL based on content type (with proper encoding)
-    const encodedUrl = season === null 
-        ? `${DAHMER_MOVIES_API}/movies/${encodeURIComponent(title.replace(/:/g, '') + ' (' + year + ')')}/`
-        : `${DAHMER_MOVIES_API}/tvs/${encodeURIComponent(title.replace(/:/g, ' -'))}/Season ${season}/`;
-    
-    console.log(`[DahmerMovies] Fetching from: ${encodedUrl}`);
-    
-    return makeRequest(encodedUrl).then(function(response) {
+
+    const candidates = titleVariants(title).map((t) => season === null
+        ? `${DAHMER_MOVIES_API}/movies/${encodeURIComponent(t + ' (' + year + ')')}/`
+        : `${DAHMER_MOVIES_API}/tvs/${encodeURIComponent(t.replace(/:/g, ' -'))}/Season ${season}/`);
+
+    // Try each folder-name guess in turn; stop at the first one that
+    // actually returns matching content, since the site's real folder
+    // name is unknown ahead of time and may differ from TMDB's title.
+    function tryNext(i) {
+        if (i >= candidates.length) return Promise.resolve([]);
+        const encodedUrl = candidates[i];
+        console.log(`[DahmerMovies] Fetching from: ${encodedUrl}`);
+
+        return makeRequest(encodedUrl).then(function(response) {
         return response.text();
     }).then(function(html) {
         console.log(`[DahmerMovies] Response length: ${html.length}`);
@@ -251,8 +270,8 @@ function invokeDahmerMovies(title, year, season = null, episode = null) {
         }
         
         if (filteredPaths.length === 0) {
-            console.log('[DahmerMovies] No matching content found');
-            return [];
+            console.log('[DahmerMovies] No matching content in this folder name guess, trying next variant if any');
+            return tryNext(i + 1);
         }
         
         // Process and return results
@@ -306,13 +325,16 @@ function invokeDahmerMovies(title, year, season = null, episode = null) {
         return results;
         
     }).catch(function(error) {
-        if (error.name === 'AbortError') {
-            console.log('[DahmerMovies] Request timeout - server took too long to respond');
-        } else {
-            console.log(`[DahmerMovies] Error: ${error.message}`);
-        }
-        return [];
-    });
+            if (error.name === 'AbortError') {
+                console.log('[DahmerMovies] Request timeout - server took too long to respond');
+            } else {
+                console.log(`[DahmerMovies] Error: ${error.message}`);
+            }
+            return tryNext(i + 1);
+        });
+    }
+
+    return tryNext(0);
 }
 
 // Main function to get streams for TMDB content

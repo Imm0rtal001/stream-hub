@@ -1,10 +1,12 @@
 # StreamHub
 
 A self-hosted **Stremio addon** and **Nuvio scraper repository**, built from
-your five providers (4KHdHub, CineFreak, DahmerMovies, MoviesHunt,
-MoviesDrive), with a web **control centre** to turn sources on/off, tune
-per-provider settings, override DNS or mirror a domain that moved, run a live
-test, and get one-click install links — all deployable to Vercel for free.
+your 14 providers (4KHdHub, CineFreak, DahmerMovies, MoviesHunt, MoviesDrive,
+AnimeSalt, AnimeWorld, HDHub4u, HiAnime, MovieBox, Re:ANIME, Rogmovies,
+UHDMovies, VegaMovies), with a web **control centre** to turn sources
+on/off, tune per-provider settings, override DNS or mirror a domain that
+moved, run a live test, and get one-click install links — all deployable to
+Vercel for free.
 
 ```
 Providers (yours) → DNS resolver (system or DoH, your choice) → StreamHub → Stremio / Nuvio
@@ -80,11 +82,34 @@ Two upgrades, both optional:
   IPv4-only toggle, hostname→IP overrides, domain mirroring, and a live
   resolver test.
 - **Test** — run a real lookup (IMDb id, `id:season:episode`, or `tmdb:id`)
-  against your enabled providers and see per-provider timing, errors, the
+  against your enabled providers and see per-provider timing, errors, badges
+  (quality/HDR/codec) with server/size/language/audio for each stream, the
   raw network trace (DNS source + IP per request), and provider console
   logs.
 - **Settings** — TMDB key, per-provider timeout, sort order, streams-per-
   provider cap, export/import/reset.
+
+## Stream formatting
+
+The addon ships its own icon (an embedded SVG, no external image host to
+depend on) instead of a generic placeholder. Each stream Stremio shows is
+formatted consistently regardless of what a provider actually returned:
+
+- A short **badge line** — resolution (2160p shows as `4K`, 1440p as `2K`),
+  HDR/Dolby Vision, and video codec (H.264/H.265/AV1/VP9) — appended under
+  the provider's name.
+- A clean **description** with one icon-prefixed line per field that could
+  actually be determined: 🖥 Server, 💾 Size, 🌐 Language, 🔊 Audio codec.
+  A field that can't be found (most providers don't expose all of these)
+  is left out rather than shown as empty.
+
+This works even for providers that don't have separate quality/language/
+audio fields at all — `lib/streamMeta.js` also parses these out of
+whatever text a provider *did* return (title, name, or a size string that
+turns out to hold more than just the size, as Rogmovies and VegaMovies do)
+using known tokens (language names, `DDP5.1`/`Atmos`/`AAC`/etc., `x265`/
+`HEVC`/etc.), so results stay readable even from a provider that only
+gives you a release filename.
 
 ## Adding a provider
 
@@ -102,8 +127,30 @@ module.exports = { getStreams };
 
 It's picked up automatically (also add a manifest.json entry for a nicer
 name/logo/description). Providers run in an isolated `vm` context per
-request — they get `fetch`, `cheerio`, `TMDB_API_KEY`, `SCRAPER_SETTINGS`,
-and standard globals, nothing else.
+request — they get `fetch`, `cheerio`, `crypto-js`, `TMDB_API_KEY`,
+`SCRAPER_SETTINGS`, and standard globals, nothing else.
+
+Two stream-object shapes are both accepted from `getStreams()`, freely
+mixed across providers:
+
+- **Simple**: `{ url, quality, title/name, size, headers, filename }` —
+  StreamHub builds the final Stremio `behaviorHints` (including
+  `proxyHeaders`) for you. Most providers, including all five original
+  ones, use this.
+- **Native**: a stream that already sets its own
+  `behaviorHints.proxyHeaders.request` and bakes quality into the
+  name/title text instead of a separate `quality` field (Rogmovies and
+  VegaMovies do this). StreamHub detects and preserves this automatically —
+  `lib/util.js`'s `streamHeaders()`/`streamQuality()` fall back to reading
+  `behaviorHints` and parsing a resolution token (`1080p`, `2160p`, …) out
+  of the title when a plain `quality`/`headers` field isn't there, so
+  sorting-by-quality and header-forwarding both still work.
+
+If a provider needs `crypto-js` (MovieBox does, for its API request
+signing) it's listed in `package.json` and used if `npm install` succeeded;
+if it didn't, `lib/cryptojs-lite.js` — a small dependency-free stand-in
+covering MD5/HmacMD5/Base64/Utf8/Hex — is used instead, verified against
+the standard MD5 and HMAC-MD5 test vectors in `test/run.js`.
 
 ## DNS &amp; mirror domains, in plain terms
 
@@ -128,6 +175,21 @@ and standard globals, nothing else.
 - Providers scrape third-party sites; you are responsible for complying
   with your local laws and each site's terms. No content is hosted by this
   project.
+- **MovieBox** needs `crypto-js` at the moment its file loads (not lazily),
+  which crashed the provider before `lib/cryptojs-lite.js` was added as a
+  fallback — this is fixed, and covered by
+  `test/run.js`'s crypto-js tests.
+- **DahmerMovies** guesses its source site's folder name from the TMDB
+  title (e.g. `Movie Title (2024)`); it now tries a few punctuation
+  variants in turn instead of just one, which recovers titles with
+  apostrophes/ampersands/dashes that don't match the folder name exactly.
+  Separately, some files on that site currently redirect through what
+  looks like a locked-download gate (a Cloudflare Worker page titled
+  "Download Locked") rather than serving the video directly — if that's
+  what you're hitting, it's a change on the source site's end, and
+  working around an access gate like that isn't something this project
+  will do. Disable the provider in the control centre if it's consistently
+  giving you unplayable links.
 - The included `test/run.js` exercises config sanitizing, the DNS/mirror
   layer, the provider sandbox against your real provider files, and the
   full Stremio/Nuvio/API routes against a mocked network — run `npm test`.

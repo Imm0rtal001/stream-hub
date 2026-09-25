@@ -106,7 +106,7 @@ async function t(name, fn) {
   });
 
   console.log('stremio');
-  const cfgRaw = { tmdbKey: 'k'.repeat(32), dns: { mode: 'doh', rewrites: { 'mirror-me.example': 'mirror-new.example' } } };
+  const cfgRaw = { tmdbKey: 'k'.repeat(32), providers: { 'fake-native': { enabled: false } }, dns: { mode: 'doh', rewrites: { 'mirror-me.example': 'mirror-new.example' } } };
   const prefix = `/c/${enc(cfgRaw)}`;
 
   await t('manifest is valid for Stremio', async () => {
@@ -117,6 +117,7 @@ async function t(name, fn) {
     assert.ok(m.types.includes('movie') && m.types.includes('series'));
     assert.ok(Array.isArray(m.catalogs));
     assert.equal(m.behaviorHints.configurable, true);
+    assert.match(m.logo, /^data:image\/svg\+xml;base64,/, 'manifest ships its own icon, not a placeholder');
     assert.equal(r.headers['access-control-allow-origin'], '*');
   });
   await t('movie stream: IMDb→TMDB, mirror rewrite, DoH, header proxying, invisible chars stripped', async () => {
@@ -157,7 +158,7 @@ async function t(name, fn) {
     assert.equal(r.headers['cache-control'], 'no-store');
   });
   await t('provider disabled in config is skipped', async () => {
-    const c = { ...cfgRaw, providers: { fake: { enabled: false } } };
+    const c = { ...cfgRaw, providers: { ...cfgRaw.providers, fake: { enabled: false } } };
     const r = await call('GET', `/c/${enc(c)}/stream/movie/tt1375666.json`);
     assert.deepEqual(r.json.streams, []);
   });
@@ -167,12 +168,129 @@ async function t(name, fn) {
     assert.equal(r.json.streams.length, 1);
     assert.equal(r.json.streams[0].name, 'fake\n1080p');
   });
+  await t('native (behaviorHints) provider contract: headers and quality are recovered from text', async () => {
+    const c = { tmdbKey: 'k'.repeat(32), providers: { fake: { enabled: false }, 'fake-native': { enabled: true } } };
+    const r = await call('GET', `/c/${enc(c)}/stream/movie/tt1375666.json`);
+    const s = r.json.streams;
+    assert.equal(s.length, 2);
+    assert.equal(s[0].name, 'fake-native\n4K', '2160p normalized to a 4K badge from the title text');
+    assert.deepEqual(s[0].behaviorHints.proxyHeaders, { request: { Referer: 'https://mirror-me.example/' } }, 'behaviorHints.proxyHeaders carried through untouched');
+    const sorted = await call('GET', `/c/${enc({ ...c, sort: 'quality' })}/stream/movie/tt1375666.json`);
+    assert.equal(sorted.json.streams[0].name, 'fake-native\n4K', '2160p (no `quality` field) still sorts above 720p');
+    const testRes = await call('POST', '/api/test', { body: { config: c, type: 'movie', id: 'tt1375666' } });
+    const row = testRes.json.streams.find((x) => x.quality === '2160p');
+    assert.ok(row, 'quality is recovered for the /api/test view too');
+    assert.deepEqual(row.headers, { Referer: 'https://mirror-me.example/' });
+  });
 
+  const realDir = path.join(__dirname, '..', 'providers');
+  const realManifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
+
+  await t('dahmermovies falls through to a later folder-name guess when an earlier one has no matches', async () => {
+    const code = fs.readFileSync(path.join(realDir, 'dahmermovies.js'), 'utf8');
+    let folderCalls = 0;
+    const fetchFn = async (url) => {
+      if (String(url).includes('api.themoviedb.org')) {
+        return { ok: true, status: 200, text: async () => '', json: async () => ({ title: "Foo & Bar's: Two", release_date: '2021-01-01' }) };
+      }
+      folderCalls++;
+      const decoded = decodeURIComponent(url);
+      // Only the "strip all punctuation" folder-name guess matches this
+      // fake listing; every earlier, punctuation-preserving guess must
+      // come back empty and be tried in turn before this one is reached.
+      const isRightGuess = decoded.includes('Foo Bars Two (2021)');
+      const html = isRightGuess
+        ? '<table><tr><td><a href="Foo.Bars.Two.2021.1080p.WEB-DL.mkv">Foo.Bars.Two.2021.1080p.WEB-DL.mkv</a></td></tr></table>'
+        : '<table></table>';
+      return { ok: true, status: 200, text: async () => html, json: async () => ({}) };
+    };
+    const api = loadProvider({ key: 'real:dahmermovies-fallback', code, fetch: fetchFn });
+    const streams = await api.getStreams('123', 'movie', null, null);
+    assert.ok(folderCalls >= 2, 'tried more than one folder-name guess before succeeding');
+    assert.equal(streams.length, 1);
+    assert.match(streams[0].url, /Foo\.Bars\.Two\.2021\.1080p/);
+  });
+
+  await t('all 9 newly added providers are registered and load', () => {
+    const ids = realManifest.scrapers.map((p) => p.id);
+    for (const id of ['animesalt', 'animeworld', 'hdhub4u', 'hianime', 'moviebox', 'reanime', 'rogmovies', 'uhdmovies', 'vegamovies']) {
+      assert.ok(ids.includes(id), `${id} missing from manifest`);
+    }
+    assert.equal(realManifest.scrapers.length, 14);
+    for (const entry of realManifest.scrapers) {
+      const code = fs.readFileSync(path.join(realDir, path.basename(entry.filename)), 'utf8');
+      const api = loadProvider({ key: `real:${entry.id}`, code, fetch: async () => { throw new Error('offline'); } });
+      assert.equal(typeof api.getStreams, 'function', entry.id);
+    }
+  });
+  await t('mirror-domain detection covers ENDPOINT-named and array-literal constants', () => {
+    const hdhub4uSrc = fs.readFileSync(path.join(realDir, 'hdhub4u.js'), 'utf8');
+    assert.deepEqual(registry.detectDomains(hdhub4uSrc), ['new6.hdhub4u.cl', 'search.pingora.fyi']);
+    const reanimeSrc = fs.readFileSync(path.join(realDir, 'reanime.js'), 'utf8');
+    const domains = registry.detectDomains(reanimeSrc);
+    assert.ok(['reanime.to', 'reanime.cz', 'reanime.wtf'].every((d) => domains.includes(d)));
+  });
+  await t('hianime exposes its sub/dub/quality settings schema', async () => {
+    const code = fs.readFileSync(path.join(realDir, 'hianime.js'), 'utf8');
+    const api = loadProvider({ key: 'schema:hianime', code, fetch: async () => {} });
+    const schema = await api.onSettings();
+    assert.ok(schema.some((s) => s.key === 'enableDub'));
+    assert.ok(schema.some((s) => s.key === 'enable1080p'));
+  });
+  await t('crypto-js-lite matches known MD5/HMAC-MD5 vectors (moviebox\'s dependency, when the real package is absent)', () => {
+    const c = require('../lib/cryptojs-lite');
+    assert.equal(c.MD5('').toString(c.enc.Hex), 'd41d8cd98f00b204e9800998ecf8427e');
+    assert.equal(c.HmacMD5('The quick brown fox jumps over the lazy dog', 'key').toString(c.enc.Hex), '80070713463e7749b90c2dc24911e275');
+    assert.equal(c.enc.Base64.parse(Buffer.from('hello world').toString('base64')).toString(c.enc.Utf8), 'hello world');
+  });
+  await t('moviebox resolves crypto-js (real package or lite fallback) at module load time', () => {
+    // moviebox dereferences crypto-js via an esbuild __toESM() helper at the
+    // top of the file, so merely loading the module (not calling getStreams)
+    // already exercises the fallback path end to end.
+    const code = fs.readFileSync(path.join(realDir, 'moviebox.js'), 'utf8');
+    const api = loadProvider({ key: 'real:moviebox', code, fetch: async () => { throw new Error('offline'); } });
+    assert.equal(typeof api.getStreams, 'function');
+  });
+
+  console.log('stream metadata (badges, server, language, audio/video codec)');
+  const { parseStreamMeta } = require('../lib/streamMeta');
+  await t('parses language/audio/codec/server out of a HubCloud-style release string', () => {
+    const meta = parseStreamMeta({
+      name: 'Rogmovies • 2160P • HubCloud', title: 'Rogmovies • 2160P • HubCloud',
+      size: 'English • Hindi • 3.1 GB\nWEB-DL • DDP5.1 • Atmos • H.265',
+      url: 'https://hubcloud.ist/abc',
+    });
+    assert.equal(meta.size, '3.1 GB');
+    assert.equal(meta.language, 'English • Hindi');
+    assert.equal(meta.audioCodec, 'DDP5.1 • Atmos');
+    assert.equal(meta.videoCodec, 'H.265');
+    assert.equal(meta.server, 'HubCloud');
+    assert.deepEqual(meta.badges, ['4K', 'H.265'], '2160p normalizes to a 4K badge');
+  });
+  await t('parses a plain scraped release filename', () => {
+    const meta = parseStreamMeta({ title: 'Movie.Name.2023.1080p.WEB-DL.DDP5.1.Hindi.English.x264', size: '1.4GB' });
+    assert.equal(meta.size, '1.4 GB');
+    assert.equal(meta.language, 'Hindi • English'); // appears in that order in the release name
+    assert.equal(meta.audioCodec, 'DDP5.1');
+    assert.equal(meta.videoCodec, 'H.264');
+    assert.deepEqual(meta.badges, ['1080p', 'H.264']);
+  });
+  await t('omits fields it cannot determine, rather than guessing', () => {
+    const meta = parseStreamMeta({ title: 'unlabeled stream', url: 'https://example.com/x.mkv' });
+    assert.deepEqual(meta, { quality: '', size: '', language: '', audioCodec: '', videoCodec: '', hdr: '', server: '', badges: [] });
+  });
+  await t('end to end: the Stremio stream gets a badge name and clean icon-prefixed description', async () => {
+    const c = { tmdbKey: 'k'.repeat(32), providers: { fake: { enabled: false }, 'fake-native': { enabled: true } } };
+    const r = await call('GET', `/c/${enc(c)}/stream/movie/tt1375666.json`);
+    const s = r.json.streams[0];
+    assert.equal(s.name, 'fake-native\n4K');
+    assert.ok(!s.description.includes('fake-native'), 'no redundant title line when title === name');
+  });
   console.log('nuvio');
   await t('nuvio manifest lists scrapers with relative filenames', async () => {
     const r = await call('GET', `${prefix}/nuvio/manifest.json`);
     assert.ok(Array.isArray(r.json.scrapers));
-    assert.equal(r.json.scrapers[0].filename, 'providers/fake.js');
+    assert.ok(r.json.scrapers.some((sc) => sc.filename === 'providers/fake.js'));
   });
   await t('nuvio provider file has mirror domains rewritten', async () => {
     const r = await call('GET', `${prefix}/nuvio/providers/fake.js`);
@@ -220,7 +338,7 @@ async function t(name, fn) {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 't';
     try {
-      const c = await call('POST', '/api/profile', { body: { config: { tmdbKey: 'k'.repeat(32), providers: { fake: { enabled: true } } } } });
+      const c = await call('POST', '/api/profile', { body: { config: { tmdbKey: 'k'.repeat(32), providers: { fake: { enabled: true }, 'fake-native': { enabled: false } } } } });
       assert.equal(c.statusCode, 200);
       const { id, secret } = c.json;
       const m = await call('GET', `/u/${id}/manifest.json`);
@@ -228,7 +346,7 @@ async function t(name, fn) {
       assert.equal((await call('GET', `/api/profile/${id}`, { headers: { 'x-profile-secret': 'wrong' } })).statusCode, 403);
       const got = await call('GET', `/api/profile/${id}`, { headers: { 'x-profile-secret': secret } });
       assert.equal(got.json.config.providers.fake.enabled, true);
-      const put = await call('PUT', `/api/profile/${id}`, { headers: { 'x-profile-secret': secret }, body: { config: { tmdbKey: 'k'.repeat(32), providers: { fake: { enabled: false } } } } });
+      const put = await call('PUT', `/api/profile/${id}`, { headers: { 'x-profile-secret': secret }, body: { config: { tmdbKey: 'k'.repeat(32), providers: { fake: { enabled: false }, 'fake-native': { enabled: false } } } } });
       assert.equal(put.statusCode, 200);
       const s1 = await call('GET', `/u/${id}/stream/movie/tt1375666.json`);
       assert.deepEqual(s1.json.streams, [], 'edited profile disables the provider');

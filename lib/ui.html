@@ -139,9 +139,12 @@ td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--wash); vertical-ali
 details { margin-top: 14px; }
 summary { cursor: pointer; color: var(--muted); }
 pre { background: var(--wash); padding: 10px 12px; border-radius: 6px; overflow: auto; max-height: 240px; font-family: var(--mono); font-size: 12px; margin: 8px 0 0; }
-.stream { padding: 10px 0; border-bottom: 1px solid var(--wash); display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; }
+.stream { padding: 10px 0; border-bottom: 1px solid var(--wash); }
+.stream-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .stream .t { font-weight: 600; }
-.stream .u { grid-column: 1 / -1; color: var(--muted); word-break: break-all; }
+.stream .u { color: var(--muted); word-break: break-all; margin-top: 3px; }
+.stream .u.meta { word-break: normal; }
+.pill.badge { color: var(--signal); border-color: currentColor; font-weight: 600; }
 .empty { color: var(--muted); padding: 18px 0; }
 
 #toast { position: fixed; bottom: 22px; left: 50%; transform: translate(-50%, 20px); background: var(--ink); color: var(--paper); padding: 9px 16px; border-radius: 8px; opacity: 0; pointer-events: none; transition: .2s; z-index: 9; }
@@ -511,6 +514,10 @@ function buildTest() {
 }
 function renderResult(r) {
   const host = (u) => { try { return new URL(u).hostname; } catch { return ''; } };
+  const metaLine = (s) => [
+    s.server && `🖥 ${s.server}`, s.size && `💾 ${s.size}`,
+    s.language && `🌐 ${s.language}`, s.audioCodec && `🔊 ${s.audioCodec}`,
+  ].filter(Boolean).join('   ');
   return h('div', {},
     h('p', { class: 'note ' + (r.streams.length ? 'ok' : 'warn'), style: 'margin:0', text: `${r.streams.length} stream${r.streams.length === 1 ? '' : 's'} in ${(r.ms / 1000).toFixed(1)} s, TMDB ${r.target.mediaType} ${r.target.tmdbId}` }),
     r.report.length === 0 ? h('p', { class: 'empty', text: 'No provider is enabled for this type.' }) : h('div', { class: 'scroll', style: 'margin-top:10px' }, h('table', {},
@@ -519,9 +526,13 @@ function renderResult(r) {
         h('td', {}, p.error ? h('span', { class: 'pill bad', text: p.error }) : h('span', { class: 'pill ' + (p.count ? 'ok' : 'warn'), text: p.count ? `${p.count} streams` : 'no streams' })),
         h('td', { text: p.ms + ' ms' })))))),
     h('div', { style: 'margin-top:14px' }, r.streams.map((s) => h('div', { class: 'stream' },
-      h('div', { class: 't', text: `${s.quality || 'Unknown quality'} from ${s.provider}` }),
-      h('button', { class: 'btn quiet', onclick: () => copy(s.url) }, 'Copy link'),
-      h('div', { class: 'u mono', text: [s.title, s.size, host(s.url)].filter(Boolean).join('   ') })))),
+      h('div', { class: 'stream-head' },
+        h('span', { class: 't', text: s.provider }),
+        ...(s.badges || []).map((b) => h('span', { class: 'pill badge', text: b })),
+        h('button', { class: 'btn quiet', style: 'margin-left:auto', onclick: () => copy(s.url) }, 'Copy link')),
+      h('div', { class: 'u mono', text: s.title || '' }),
+      metaLine(s) && h('div', { class: 'u meta', text: metaLine(s) }),
+      h('div', { class: 'u mono', style: 'opacity:.6', text: host(s.url) })))),
     h('details', {}, h('summary', { text: `Network trace (${r.trace.length} requests)` }),
       h('div', { class: 'scroll' }, h('table', {},
         h('thead', {}, h('tr', {}, ['Status', 'Host', 'Path', 'DNS', 'Time'].map((x) => h('th', { text: x })))),

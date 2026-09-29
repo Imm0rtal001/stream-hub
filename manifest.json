@@ -109,13 +109,13 @@
       "contentLanguage": ["en", "hi"]
     },
     {
-      "id": "hianime",
-      "name": "HiAnime.",
+      "id": "anikage",
+      "name": "Anikage.",
       "description": "Discontinued: HiAnime (hianime.at) permanently shut down on 13 Mar 2026 and has no legitimate successor. Left off by default.",
       "version": "1.0.0",
       "author": "Imm0rtal001",
       "supportedTypes": ["tv"],
-      "filename": "providers/hianime.js",
+      "filename": "providers/anikage.js",
       "enabled": false,
       "hasSettings": true,
       "formats": ["m3u8", "mp4"],

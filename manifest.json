@@ -83,13 +83,13 @@
       "contentLanguage": ["ja", "en"]
     },
     {
-      "id": "animeworld",
-      "name": "AnimeWorld.",
+      "id": "castle",
+      "name": "Castle.",
       "description": "Provider: AnimeWorld | Anime movies & series",
       "version": "1.0.0",
       "author": "Imm0rtal001",
       "supportedTypes": ["movie", "tv"],
-      "filename": "providers/animeworld.js",
+      "filename": "providers/castle.js",
       "enabled": true,
       "formats": ["mp4", "m3u8"],
       "logo": "",

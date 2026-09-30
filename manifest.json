@@ -1,6 +1,6 @@
 {
   "name": "StreamHub Providers",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Nuvio local scrapers, also served as a Stremio addon by StreamHub",
   "scrapers": [
     {
@@ -85,7 +85,7 @@
     {
       "id": "castle",
       "name": "Castle.",
-      "description": "Provider: AnimeWorld | Anime movies & series",
+      "description": "Provider: Castle | Movies & TV shows, English/Hindi/Bengali audio, 1080p",
       "version": "1.0.0",
       "author": "Imm0rtal001",
       "supportedTypes": ["movie", "tv"],
@@ -93,7 +93,7 @@
       "enabled": true,
       "formats": ["mp4", "m3u8"],
       "logo": "",
-      "contentLanguage": ["ja", "en"]
+      "contentLanguage": ["en", "hi", "bn"]
     },
     {
       "id": "hdhub4u",

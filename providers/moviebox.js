@@ -43,6 +43,11 @@ const RESOLUTION_OPTIONS = [
 const KNOWN_RESOLUTIONS = ["2160", "1440", "1080", "720", "480", "360", "240"];
 const RESOLUTION_RANK = { "2160p": 5, "1440p": 4, "1080p": 3, "720p": 2, "480p": 1 };
 
+const API_HOSTS = ["api3.aoneroom.com", "api4.aoneroom.com", "api5.aoneroom.com", "api6.aoneroom.com"];
+const TOKEN_URLS = [
+    "https://apig.inmoviebox.com/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=4516404531735022304&page=1&perPage=1",
+].concat(API_HOSTS.map((host) => `https://${host}/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=4516404531735022304&page=1&perPage=1`));
+
 const DEVICE_ID = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
     byte.toString(16).padStart(2, "0")
 ).join("");
@@ -198,16 +203,16 @@ async function sendSignedRequest(method, url, body, withAuth) {
 }
 
 async function requestToken() {
-    try {
-        const response = await sendSignedRequest(
-            "GET",
-            "https://apig.inmoviebox.com/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=4516404531735022304&page=1&perPage=1",
-            null,
-            false
-        );
-        const token = parseTokenHeader(response.headers.get("x-user"));
-        if (token) authToken = token;
-    } catch (error) { }
+    for (const tokenUrl of TOKEN_URLS) {
+        try {
+            const response = await sendSignedRequest("GET", tokenUrl, null, false);
+            const token = parseTokenHeader(response.headers.get("x-user"));
+            if (token) { authToken = token; return authToken; }
+            console.warn(`[moviebox] no x-user token from ${new URL(tokenUrl).host} (HTTP ${response.status})`);
+        } catch (error) {
+            console.warn(`[moviebox] token request to ${new URL(tokenUrl).host} failed: ${error && error.message}`);
+        }
+    }
     return authToken;
 }
 
@@ -217,23 +222,33 @@ function ensureToken(forceRefresh) {
 }
 
 async function callMobileApi(method, pathAndQuery, body) {
-    try {
-        const url = `https://api3.aoneroom.com${pathAndQuery}`;
-        const tokenBefore = authToken;
-        let response = await sendSignedRequest(method, url, body, true);
-        if ([401, 441].includes(response.status)) {
-            if (!authToken || authToken === tokenBefore) await ensureToken(true);
-            response = await sendSignedRequest(method, url, body, true);
+    let lastStatus = null;
+    for (const host of API_HOSTS) {
+        try {
+            const url = `https://${host}${pathAndQuery}`;
+            const tokenBefore = authToken;
+            let response = await sendSignedRequest(method, url, body, true);
+            if ([401, 441].includes(response.status)) {
+                if (!authToken || authToken === tokenBefore) await ensureToken(true);
+                response = await sendSignedRequest(method, url, body, true);
+            }
+            lastStatus = response.status;
+            if (response.status > 0 && response.status < 500 && ![401, 441].includes(response.status)) return response;
+            console.warn(`[moviebox] ${host} answered HTTP ${response.status}${response.status === 441 ? " (token rejected)" : ""}; trying next host`);
+        } catch (error) {
+            console.warn(`[moviebox] ${host} request failed: ${error && error.message}`);
         }
-        return response.status > 0 && response.status < 500 ? response : null;
-    } catch (error) {
-        return null;
     }
+    console.warn(`[moviebox] all API hosts failed (last status ${lastStatus})`);
+    return null;
 }
 
 async function fetchMobileJson(method, pathAndQuery, payload) {
     const response = await callMobileApi(method, pathAndQuery, payload ? JSON.stringify(payload) : null);
-    if (!response || response.status !== 200) return null;
+    if (!response || response.status !== 200) {
+        if (response) console.warn(`[moviebox] ${pathAndQuery.split("?")[0]} -> HTTP ${response.status}`);
+        return null;
+    }
     return await response.json();
 }
 
@@ -721,13 +736,13 @@ async function getStreams(tmdbId, mediaType, season, episode) {
         if (isTv && (season == null || episode == null)) return [];
 
         const [metadata] = await Promise.all([fetchTmdbMetadata(tmdbId, mediaType), ensureToken(false)]);
-        if (!metadata) return [];
+        if (!metadata) { console.warn("[moviebox] TMDB lookup failed (is the TMDB key set?)"); return []; }
 
         const subjectId = await findMatchingSubjectId(metadata);
-        if (!subjectId) return [];
+        if (!subjectId) { console.warn("[moviebox] no matching title found for", metadata.titles[0]); return []; }
 
         const subject = await fetchSubjectDetail(subjectId);
-        if (!subject) return [];
+        if (!subject) { console.warn("[moviebox] could not load subject", subjectId); return []; }
 
         const enabledTracks = extractAudioTracks(subject, subjectId).filter(isTrackEnabled);
         if (!enabledTracks.length) return [];
@@ -740,8 +755,11 @@ async function getStreams(tmdbId, mediaType, season, episode) {
         };
         const trackResults = await Promise.all(enabledTracks.map((track) => resolveAudioTrack(context, track)));
 
-        return sortByResolution(dedupeByUrl(trackResults.flat())).map(toStreamResult);
+        const finalStreams = sortByResolution(dedupeByUrl(trackResults.flat())).map(toStreamResult);
+        if (!finalStreams.length) console.warn("[moviebox] title found but no playable streams (all resolutions/tracks filtered or empty)");
+        return finalStreams;
     } catch (error) {
+        console.warn("[moviebox] failed:", error && error.message);
         return [];
     }
 }

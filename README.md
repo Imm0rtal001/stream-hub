@@ -1,8 +1,8 @@
 # StreamHub
 
 A self-hosted **Stremio addon** and **Nuvio scraper repository**, built from
-your 14 providers (4KHdHub, CineFreak, DahmerMovies, MoviesHunt, MoviesDrive,
-AnimeSalt, AnimeWorld, HDHub4u, Anikage, MovieBox, Re:ANIME, Rogmovies,
+your 14 providers (4KHdHub, Castle, CineFreak, DahmerMovies, MoviesHunt, MoviesDrive,
+AnimeSalt, HDHub4u, Anikage, MovieBox, Re:ANIME, Rogmovies,
 UHDMovies, VegaMovies), with a web **control centre** to turn sources
 on/off, tune per-provider settings, override DNS or mirror a domain that
 moved, run a live test, and get one-click install links — all deployable to

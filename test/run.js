@@ -213,7 +213,7 @@ async function t(name, fn) {
 
   await t('all 9 newly added providers are registered and load', () => {
     const ids = realManifest.scrapers.map((p) => p.id);
-    for (const id of ['animesalt', 'animeworld', 'hdhub4u', 'anikage', 'moviebox', 'reanime', 'rogmovies', 'uhdmovies', 'vegamovies']) {
+    for (const id of ['animesalt', 'hdhub4u', 'anikage', 'castle', 'moviebox', 'reanime', 'rogmovies', 'uhdmovies', 'vegamovies']) {
       assert.ok(ids.includes(id), `${id} missing from manifest`);
     }
     assert.equal(realManifest.scrapers.length, 14);
@@ -283,6 +283,56 @@ async function t(name, fn) {
     const api = loadProvider({ key: 'real:anikage-dub', code, fetch: fetchFn, tmdbKey: 'K', settings: { enableSub: false, enableDub: true } });
     await api.getStreams('209867', 'tv', 1, 1);
     assert.deepEqual([...langs], ['dub']);
+  });
+  await t('castle decrypts the AES film-api responses and returns streams (works without the real crypto-js)', async () => {
+    const nodeCrypto = require('crypto');
+    const code = fs.readFileSync(path.join(realDir, 'castle.js'), 'utf8');
+    const skRaw = Buffer.from('abcdefghij');
+    const key = Buffer.concat([skRaw, Buffer.from('T!BgJB')]).subarray(0, 16);
+    const encrypt = (o) => { const c = nodeCrypto.createCipheriv('aes-128-cbc', key, key); return Buffer.concat([c.update(JSON.stringify(o)), c.final()]).toString('base64'); };
+    const reply = (b) => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => b, text: async () => (typeof b === 'string' ? b : JSON.stringify(b)) });
+    const fetchFn = async (url) => {
+      url = String(url);
+      if (/themoviedb/.test(url)) return reply({ title: 'Fight Club', release_date: '1999-10-15' });
+      if (/getSecurityKey/.test(url)) return reply({ code: 200, data: skRaw.toString('base64') });
+      if (/searchByKeyword/.test(url)) return reply({ data: encrypt({ rows: [{ id: 'm1', title: 'Fight Club' }] }) });
+      if (/\/movie\?/.test(url)) return reply({ data: encrypt({ episodes: [{ id: 'e1', number: 1, tracks: [] }] }) });
+      if (/getVideo2/.test(url)) return reply({ data: encrypt({ videoUrl: 'https://cdn.example/v.m3u8', videos: [{ url: 'https://cdn.example/v.m3u8', resolutionDescription: '1080p' }] }) });
+      return { ok: false, status: 404, headers: { get: () => null }, text: async () => '', json: async () => ({}) };
+    };
+    const logs = [];
+    const api = loadProvider({ key: 'real:castle-run', code, fetch: fetchFn, tmdbKey: 'K', logs });
+    const out = await api.getStreams('550', 'movie', null, null);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].url, 'https://cdn.example/v.m3u8');
+  });
+  await t('castle logs why it found nothing instead of failing silently', async () => {
+    const code = fs.readFileSync(path.join(realDir, 'castle.js'), 'utf8');
+    const fetchFn = async (url) => (/themoviedb/.test(url)
+      ? { ok: true, status: 200, json: async () => ({ title: 'X', release_date: '2000-01-01' }) }
+      : { ok: false, status: 503, headers: { get: () => null }, text: async () => '', json: async () => ({}) });
+    const logs = [];
+    const api = loadProvider({ key: 'real:castle-down', code, fetch: fetchFn, tmdbKey: 'K', logs });
+    assert.deepEqual(await api.getStreams('1', 'movie', null, null), []);
+    assert.ok(logs.some((l) => /\[castle\].*HTTP 503/.test(l)), logs.join(' | '));
+  });
+  await t('moviebox falls through to the next API host and logs rejected tokens', async () => {
+    const code = fs.readFileSync(path.join(realDir, 'moviebox.js'), 'utf8');
+    const hosts = [];
+    const fetchFn = async (url, opts = {}) => {
+      url = String(url);
+      const tmdb = /themoviedb/.test(url);
+      if (tmdb) { const b = { title: 'Fight Club', release_date: '1999-10-15' }; return { ok: true, status: 200, headers: { get: () => null }, json: async () => b, text: async () => JSON.stringify(b) }; }
+      hosts.push(new URL(url).host);
+      const status = /api3\./.test(url) ? 441 : 200;
+      const b = /search\/v2/.test(url) ? { data: { results: [] } } : {};
+      return { ok: status === 200, status, headers: { get: () => null }, json: async () => b, text: async () => JSON.stringify(b) };
+    };
+    const logs = [];
+    const api = loadProvider({ key: 'real:moviebox-441', code, fetch: fetchFn, tmdbKey: 'K', logs });
+    await api.getStreams('550', 'movie', null, null);
+    assert.ok(hosts.includes('api4.aoneroom.com'), 'tried api4 after api3 rejected the token');
+    assert.ok(logs.some((l) => /\[moviebox\].*api3.*441/.test(l)), logs.join(' | '));
   });
 
   console.log('stream metadata (badges, server, language, audio/video codec)');

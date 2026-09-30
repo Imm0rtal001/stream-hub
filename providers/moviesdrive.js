@@ -1,5 +1,5 @@
 const PROVIDER = "MoviesDrive";
-const BASE_URL = "https://new4.moviesdrive.christmas";
+const BASE_URL = "https://new5.moviesdrive.christmas";
 const TMDB_API = "https://api.themoviedb.org/3";
 const MAX_RANK = 4;
 const QUALITY_RANK = { "2160": 4, "4k": 4, "1080": 3, "720": 2, "480": 1 };

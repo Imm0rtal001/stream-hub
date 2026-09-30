@@ -213,7 +213,7 @@ async function t(name, fn) {
 
   await t('all 9 newly added providers are registered and load', () => {
     const ids = realManifest.scrapers.map((p) => p.id);
-    for (const id of ['animesalt', 'animeworld', 'hdhub4u', 'hianime', 'moviebox', 'reanime', 'rogmovies', 'uhdmovies', 'vegamovies']) {
+    for (const id of ['animesalt', 'animeworld', 'hdhub4u', 'anikage', 'moviebox', 'reanime', 'rogmovies', 'uhdmovies', 'vegamovies']) {
       assert.ok(ids.includes(id), `${id} missing from manifest`);
     }
     assert.equal(realManifest.scrapers.length, 14);
@@ -230,12 +230,12 @@ async function t(name, fn) {
     const domains = registry.detectDomains(reanimeSrc);
     assert.ok(['reanime.to', 'reanime.cz', 'reanime.wtf'].every((d) => domains.includes(d)));
   });
-  await t('hianime exposes its sub/dub/quality settings schema', async () => {
-    const code = fs.readFileSync(path.join(realDir, 'hianime.js'), 'utf8');
-    const api = loadProvider({ key: 'schema:hianime', code, fetch: async () => {} });
+  await t('anikage exposes its sub/dub settings schema', async () => {
+    const code = fs.readFileSync(path.join(realDir, 'anikage.js'), 'utf8');
+    const api = loadProvider({ key: 'schema:anikage', code, fetch: async () => {} });
     const schema = await api.onSettings();
     assert.ok(schema.some((s) => s.key === 'enableDub'));
-    assert.ok(schema.some((s) => s.key === 'enable1080p'));
+    assert.ok(schema.some((s) => s.key === 'enableSub'));
   });
   await t('crypto-js-lite matches known MD5/HMAC-MD5 vectors (moviebox\'s dependency, when the real package is absent)', () => {
     const c = require('../lib/cryptojs-lite');
@@ -250,6 +250,39 @@ async function t(name, fn) {
     const code = fs.readFileSync(path.join(realDir, 'moviebox.js'), 'utf8');
     const api = loadProvider({ key: 'real:moviebox', code, fetch: async () => { throw new Error('offline'); } });
     assert.equal(typeof api.getStreams, 'function');
+  });
+
+  await t('moviebox signs and sends real requests (needs the CryptoJS global inside the sandbox)', async () => {
+    const code = fs.readFileSync(path.join(realDir, 'moviebox.js'), 'utf8');
+    const calls = [];
+    const fetchFn = async (url, opts = {}) => {
+      calls.push({ url: String(url), headers: opts.headers || {} });
+      const tmdb = /themoviedb/.test(url);
+      const body = tmdb ? { title: 'Fight Club', release_date: '1999-10-15', external_ids: { imdb_id: 'tt0137523' } } : {};
+      return { ok: tmdb, status: tmdb ? 200 : 503, headers: { get: () => null }, text: async () => JSON.stringify(body), json: async () => body };
+    };
+    const api = loadProvider({ key: 'real:moviebox-run', code, fetch: fetchFn, tmdbKey: 'K' });
+    await api.getStreams('550', 'movie', null, null);
+    const signed = calls.find((c) => /aoneroom/.test(c.url) && c.headers['x-tr-signature']);
+    assert.ok(signed, 'moviebox reached its API with an x-tr-signature header');
+  });
+  await t('anikage is enabled by default and serves both movies and tv', () => {
+    const entry = realManifest.scrapers.find((p) => p.id === 'anikage');
+    assert.equal(entry.enabled, true);
+    assert.ok(entry.supportedTypes.includes('movie') && entry.supportedTypes.includes('tv'));
+  });
+  await t('anikage respects the SUB/DUB toggles', async () => {
+    const code = fs.readFileSync(path.join(realDir, 'anikage.js'), 'utf8');
+    const langs = new Set();
+    const fetchFn = async (url) => {
+      const m = String(url).match(/[?&]lang=(\w+)/); if (m) langs.add(m[1]);
+      const body = /themoviedb/.test(url) ? { name: 'Frieren', title: 'Frieren' }
+        : /\/search\?/.test(url) ? { data: [{ slug: 'frieren', title: { english: 'Frieren' } }] } : {};
+      return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body), headers: { get: () => null } };
+    };
+    const api = loadProvider({ key: 'real:anikage-dub', code, fetch: fetchFn, tmdbKey: 'K', settings: { enableSub: false, enableDub: true } });
+    await api.getStreams('209867', 'tv', 1, 1);
+    assert.deepEqual([...langs], ['dub']);
   });
 
   console.log('stream metadata (badges, server, language, audio/video codec)');

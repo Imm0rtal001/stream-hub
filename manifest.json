@@ -1,6 +1,6 @@
 {
   "name": "StreamHub Providers",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Nuvio local scrapers, also served as a Stremio addon by StreamHub",
   "scrapers": [
     {
@@ -253,7 +253,7 @@
       "id": "rogmovies",
       "name": "Rogmovies.",
       "description": "Provider: Rogmovies | Movies & TV shows via HubCloud/vCloud mirrors, up to 4K",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "Imm0rtal001",
       "supportedTypes": [
         "movie",
@@ -297,7 +297,7 @@
       "id": "vegamovies",
       "name": "VegaMovies.",
       "description": "Provider: VegaMovies | Movies & TV shows via HubCloud/vCloud mirrors, up to 4K",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "Imm0rtal001",
       "supportedTypes": [
         "movie",

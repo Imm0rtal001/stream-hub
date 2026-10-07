@@ -9,7 +9,8 @@ const http = require('http');
 if (fs.existsSync('.env')) {
   for (const line of fs.readFileSync('.env', 'utf8').split('\n')) {
     const m = /^\s*([A-Z0-9_]+)\s*=\s*([^#\n]*)/.exec(line);
-    if (m && m[2].trim() && !(m[1] in process.env)) process.env[m[1]] = m[2].trim();
+    const val = m && m[2].trim().replace(/^(['"])(.*)\1$/, '$2');
+    if (m && val && !(m[1] in process.env)) process.env[m[1]] = val;
   }
 }
 const { handler } = require('./lib/router');

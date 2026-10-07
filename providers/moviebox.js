@@ -280,7 +280,8 @@ function movieBoxRequest(_0, _1) {
         requestUrl.host = hosts[attempt];
         const res = yield fetch(requestUrl.toString(), options);
         if (!res.ok) {
-          if ((res.status === 403 || res.status === 429 || res.status >= 500) && attempt + 1 < maxAttempts) {
+          console.warn(`[MovieBox] ${hosts[attempt]} responded HTTP ${res.status}`);
+          if ((res.status === 403 || res.status === 429 || res.status === 441 || res.status >= 500) && attempt + 1 < maxAttempts) {
             continue;
           }
           return null;

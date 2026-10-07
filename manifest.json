@@ -9,13 +9,23 @@
       "description": "Provider: 4kHdHub | Multi-lang",
       "version": "1.5.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/4khdhub.js",
       "enabled": true,
       "hasSettings": true,
-      "formats": ["mkv", "m3u8", "mp4"],
+      "formats": [
+        "mkv",
+        "m3u8",
+        "mp4"
+      ],
       "logo": "https://i.postimg.cc/DZpW6Xfb/4khdhub.png",
-      "contentLanguage": ["en", "hi"]
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
     },
     {
       "id": "CineFreak",
@@ -23,12 +33,23 @@
       "description": "Provider: CineFreak | Bangla, English, Hindi • Nuvio TV / Fire TV compatible",
       "version": "3.3.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/CineFreak.js",
       "enabled": true,
-      "formats": ["mkv", "mp4"],
+      "formats": [
+        "mkv",
+        "mp4"
+      ],
       "logo": "",
-      "contentLanguage": ["bn", "hi", "en"]
+      "contentLanguage": [
+        "bn",
+        "hi",
+        "en"
+      ],
+      "hasSettings": true
     },
     {
       "id": "fibwatch",
@@ -36,12 +57,21 @@
       "description": "Only works on Android TV • Nuvio TV / Fire TV compatible",
       "version": "1.0.1",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/fibwatch.js",
       "enabled": true,
-      "formats": ["mp4", "mkv", "m3u8"],
+      "formats": [
+        "mp4",
+        "mkv",
+        "m3u8"
+      ],
       "logo": "https://i.postimg.cc/hGt3dV6Z/dhamermovies.png",
-      "contentLanguage": ["en"]
+      "contentLanguage": [
+        "en"
+      ]
     },
     {
       "id": "moviesHunt",
@@ -49,12 +79,19 @@
       "description": "Provider: MoviesHunt | Multi-Lang • Nuvio TV / Fire TV compatible",
       "version": "1.5.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/MoviesHunt.js",
       "enabled": true,
-      "formats": ["m3u8"],
+      "formats": [
+        "m3u8"
+      ],
       "logo": "",
-      "contentLanguage": ["en"]
+      "contentLanguage": [
+        "en"
+      ]
     },
     {
       "id": "moviesdrive",
@@ -62,25 +99,44 @@
       "description": "MoviesDrive - Movies and TV shows with multiple streaming servers • Nuvio TV / Fire TV compatible",
       "version": "2.0.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/moviesdrive.js",
       "enabled": true,
-      "formats": ["mp4", "mkv", "m3u8"],
+      "formats": [
+        "mp4",
+        "mkv",
+        "m3u8"
+      ],
       "logo": "https://i.postimg.cc/bwDbhq9q/moviesdrive.png",
-      "contentLanguage": ["en", "hi"]
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
     },
     {
       "id": "multiMovies",
       "name": "MultiMovies.",
-      "description": "Provider: AnimeSalt | Anime movies & series, Japanese audio with English subtitles",
+      "description": "Provider: MultiMovies | Movies & TV shows from multiple embed sources",
       "version": "1.0.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/MultiMovies.js",
       "enabled": true,
-      "formats": ["mp4", "m3u8"],
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
       "logo": "",
-      "contentLanguage": ["ja", "en"]
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
     },
     {
       "id": "castle",
@@ -88,12 +144,22 @@
       "description": "Provider: Castle | Movies & TV shows, English/Hindi/Bengali audio, 1080p",
       "version": "1.0.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/castle.js",
       "enabled": true,
-      "formats": ["mp4", "m3u8"],
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
       "logo": "",
-      "contentLanguage": ["en", "hi", "bn"]
+      "contentLanguage": [
+        "en",
+        "hi",
+        "bn"
+      ]
     },
     {
       "id": "hdhub4u",
@@ -101,26 +167,43 @@
       "description": "Provider: HDHub4u | Movies & TV shows, multi-lang, 1080p+",
       "version": "1.0.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/hdhub4u.js",
       "enabled": true,
-      "formats": ["mp4", "mkv"],
+      "formats": [
+        "mp4",
+        "mkv"
+      ],
       "logo": "",
-      "contentLanguage": ["en", "hi"]
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
     },
     {
       "id": "netmirror",
       "name": "Netmirror.",
-      "description": "Provider: AniKage | Anime (sub/dub) from multiple sources with subtitles",
+      "description": "Provider: Netmirror | Netflix, Prime Video & Hotstar catalogue mirror",
       "version": "1.0.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/Netmirror.js",
       "enabled": true,
-      "hasSettings": true,
-      "formats": ["m3u8", "mp4"],
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
       "logo": "",
-      "contentLanguage": ["ja", "en"]
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
     },
     {
       "id": "moviebox",
@@ -128,25 +211,43 @@
       "description": "Provider: MovieBox | Movies & TV shows, multi-lang audio with subtitles",
       "version": "1.0.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/moviebox.js",
       "enabled": true,
-      "formats": ["mp4", "m3u8"],
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
       "logo": "",
-      "contentLanguage": ["en"]
+      "contentLanguage": [
+        "en"
+      ]
     },
     {
       "id": "cinejoy",
       "name": "Cinejoy.",
-      "description": "Provider: Re:ANIME | Anime movies & series, MKV releases",
+      "description": "Provider: Cinejoy | Movies & TV shows, multi-lang",
       "version": "1.0.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/cinejoy.js",
       "enabled": true,
-      "formats": ["mkv", "mp4"],
+      "formats": [
+        "mkv",
+        "mp4",
+        "m3u8"
+      ],
       "logo": "",
-      "contentLanguage": ["ja", "en"]
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
     },
     {
       "id": "rogmovies",
@@ -154,12 +255,21 @@
       "description": "Provider: Rogmovies | Movies & TV shows via HubCloud/vCloud mirrors, up to 4K",
       "version": "1.0.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/rogmovies.js",
       "enabled": true,
-      "formats": ["mkv", "mp4"],
+      "formats": [
+        "mkv",
+        "mp4"
+      ],
       "logo": "",
-      "contentLanguage": ["en", "hi"]
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
     },
     {
       "id": "uhdmovies",
@@ -167,12 +277,21 @@
       "description": "Provider: UHDMovies | Movies & TV shows, 4K/UHD releases",
       "version": "1.0.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/uhdmovies.js",
       "enabled": true,
-      "formats": ["mkv", "mp4"],
+      "formats": [
+        "mkv",
+        "mp4"
+      ],
       "logo": "",
-      "contentLanguage": ["en", "hi"]
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
     },
     {
       "id": "vegamovies",
@@ -180,12 +299,21 @@
       "description": "Provider: VegaMovies | Movies & TV shows via HubCloud/vCloud mirrors, up to 4K",
       "version": "1.0.0",
       "author": "Imm0rtal001",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/vegamovies.js",
       "enabled": true,
-      "formats": ["mkv", "mp4"],
+      "formats": [
+        "mkv",
+        "mp4"
+      ],
       "logo": "",
-      "contentLanguage": ["en", "hi"]
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
     }
   ]
 }

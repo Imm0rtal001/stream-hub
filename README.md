@@ -1,8 +1,8 @@
 # StreamHub
 
 A self-hosted **Stremio addon** and **Nuvio scraper repository**, built from
-your 14 providers (4KHdHub, Castle, CineFreak, DahmerMovies, MoviesHunt, MoviesDrive,
-AnimeSalt, HDHub4u, Anikage, MovieBox, Re:ANIME, Rogmovies,
+your 14 providers (4KHdHub, Castle, CineFreak, Cinejoy, Fibwatch, HDHub4u,
+MovieBox, MoviesDrive, MoviesHunt, MultiMovies, Netmirror, Rogmovies,
 UHDMovies, VegaMovies), with a web **control centre** to turn sources
 on/off, tune per-provider settings, override DNS or mirror a domain that
 moved, run a live test, and get one-click install links — all deployable to
@@ -179,17 +179,8 @@ the standard MD5 and HMAC-MD5 test vectors in `test/run.js`.
   which crashed the provider before `lib/cryptojs-lite.js` was added as a
   fallback — this is fixed, and covered by
   `test/run.js`'s crypto-js tests.
-- **DahmerMovies** guesses its source site's folder name from the TMDB
-  title (e.g. `Movie Title (2024)`); it now tries a few punctuation
-  variants in turn instead of just one, which recovers titles with
-  apostrophes/ampersands/dashes that don't match the folder name exactly.
-  Separately, some files on that site currently redirect through what
-  looks like a locked-download gate (a Cloudflare Worker page titled
-  "Download Locked") rather than serving the video directly — if that's
-  what you're hitting, it's a change on the source site's end, and
-  working around an access gate like that isn't something this project
-  will do. Disable the provider in the control centre if it's consistently
-  giving you unplayable links.
+- `test/run.js` also checks that `manifest.json` and `providers/` stay in
+  sync (every provider file has a manifest entry and vice versa).
 - The included `test/run.js` exercises config sanitizing, the DNS/mirror
   layer, the provider sandbox against your real provider files, and the
   full Stremio/Nuvio/API routes against a mocked network — run `npm test`.

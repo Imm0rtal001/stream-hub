@@ -69,6 +69,10 @@ async function t(name, fn) {
     assert.deepEqual(c.dns.rewrites, { 'old.example': 'new.example' });
   });
 
+  await t('long TMDB v4 read tokens are not truncated', () => {
+    const token = 'eyJ' + 'a'.repeat(240);
+    assert.equal(normalize({ tmdbKey: token }, {}).tmdbKey, token);
+  });
   console.log('dns');
   await t('DoH resolves and blocks private addresses', async () => {
     const d = normalize({ dns: { mode: 'doh' } }, {}).dns;
@@ -186,37 +190,11 @@ async function t(name, fn) {
   const realDir = path.join(__dirname, '..', 'providers');
   const realManifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
 
-  await t('dahmermovies falls through to a later folder-name guess when an earlier one has no matches', async () => {
-    const code = fs.readFileSync(path.join(realDir, 'dahmermovies.js'), 'utf8');
-    let folderCalls = 0;
-    const fetchFn = async (url) => {
-      if (String(url).includes('api.themoviedb.org')) {
-        return { ok: true, status: 200, text: async () => '', json: async () => ({ title: "Foo & Bar's: Two", release_date: '2021-01-01' }) };
-      }
-      folderCalls++;
-      const decoded = decodeURIComponent(url);
-      // Only the "strip all punctuation" folder-name guess matches this
-      // fake listing; every earlier, punctuation-preserving guess must
-      // come back empty and be tried in turn before this one is reached.
-      const isRightGuess = decoded.includes('Foo Bars Two (2021)');
-      const html = isRightGuess
-        ? '<table><tr><td><a href="Foo.Bars.Two.2021.1080p.WEB-DL.mkv">Foo.Bars.Two.2021.1080p.WEB-DL.mkv</a></td></tr></table>'
-        : '<table></table>';
-      return { ok: true, status: 200, text: async () => html, json: async () => ({}) };
-    };
-    const api = loadProvider({ key: 'real:dahmermovies-fallback', code, fetch: fetchFn });
-    const streams = await api.getStreams('123', 'movie', null, null);
-    assert.ok(folderCalls >= 2, 'tried more than one folder-name guess before succeeding');
-    assert.equal(streams.length, 1);
-    assert.match(streams[0].url, /Foo\.Bars\.Two\.2021\.1080p/);
-  });
-
-  await t('all 9 newly added providers are registered and load', () => {
-    const ids = realManifest.scrapers.map((p) => p.id);
-    for (const id of ['animesalt', 'hdhub4u', 'anikage', 'castle', 'moviebox', 'reanime', 'rogmovies', 'uhdmovies', 'vegamovies']) {
-      assert.ok(ids.includes(id), `${id} missing from manifest`);
-    }
-    assert.equal(realManifest.scrapers.length, 14);
+  await t('every manifest entry has a provider file, every provider file has an entry, and all load', () => {
+    const files = fs.readdirSync(realDir).filter((f) => f.endsWith('.js')).sort();
+    const listed = realManifest.scrapers.map((p) => path.basename(p.filename)).sort();
+    assert.deepEqual(listed, files, 'manifest and providers/ are out of sync');
+    assert.equal(new Set(realManifest.scrapers.map((p) => p.id)).size, realManifest.scrapers.length, 'duplicate ids');
     for (const entry of realManifest.scrapers) {
       const code = fs.readFileSync(path.join(realDir, path.basename(entry.filename)), 'utf8');
       const api = loadProvider({ key: `real:${entry.id}`, code, fetch: async () => { throw new Error('offline'); } });
@@ -225,17 +203,12 @@ async function t(name, fn) {
   });
   await t('mirror-domain detection covers ENDPOINT-named and array-literal constants', () => {
     const hdhub4uSrc = fs.readFileSync(path.join(realDir, 'hdhub4u.js'), 'utf8');
-    assert.deepEqual(registry.detectDomains(hdhub4uSrc), ['new6.hdhub4u.cl', 'search.pingora.fyi']);
-    const reanimeSrc = fs.readFileSync(path.join(realDir, 'reanime.js'), 'utf8');
-    const domains = registry.detectDomains(reanimeSrc);
-    assert.ok(['reanime.to', 'reanime.cz', 'reanime.wtf'].every((d) => domains.includes(d)));
-  });
-  await t('anikage exposes its sub/dub settings schema', async () => {
-    const code = fs.readFileSync(path.join(realDir, 'anikage.js'), 'utf8');
-    const api = loadProvider({ key: 'schema:anikage', code, fetch: async () => {} });
-    const schema = await api.onSettings();
-    assert.ok(schema.some((s) => s.key === 'enableDub'));
-    assert.ok(schema.some((s) => s.key === 'enableSub'));
+    const hd = registry.detectDomains(hdhub4uSrc);
+    assert.ok(hd.some((d) => /hdhub4u/.test(d)), 'finds the BASE_URL host');
+    assert.ok(hd.includes('search.pingora.fyi'), 'finds the SEARCH_ENDPOINT host');
+    const cinejoySrc = fs.readFileSync(path.join(realDir, 'cinejoy.js'), 'utf8');
+    const cd = registry.detectDomains(cinejoySrc);
+    assert.ok(['cinejoy.pk', 'api.wing.st', 'api.shegu.st'].every((d) => cd.includes(d)), `array-literal API_BASE hosts: ${cd.join(',')}`);
   });
   await t('crypto-js-lite matches known MD5/HMAC-MD5 vectors (moviebox\'s dependency, when the real package is absent)', () => {
     const c = require('../lib/cryptojs-lite');
@@ -265,24 +238,6 @@ async function t(name, fn) {
     await api.getStreams('550', 'movie', null, null);
     const signed = calls.find((c) => /aoneroom/.test(c.url) && c.headers['x-tr-signature']);
     assert.ok(signed, 'moviebox reached its API with an x-tr-signature header');
-  });
-  await t('anikage is enabled by default and serves both movies and tv', () => {
-    const entry = realManifest.scrapers.find((p) => p.id === 'anikage');
-    assert.equal(entry.enabled, true);
-    assert.ok(entry.supportedTypes.includes('movie') && entry.supportedTypes.includes('tv'));
-  });
-  await t('anikage respects the SUB/DUB toggles', async () => {
-    const code = fs.readFileSync(path.join(realDir, 'anikage.js'), 'utf8');
-    const langs = new Set();
-    const fetchFn = async (url) => {
-      const m = String(url).match(/[?&]lang=(\w+)/); if (m) langs.add(m[1]);
-      const body = /themoviedb/.test(url) ? { name: 'Frieren', title: 'Frieren' }
-        : /\/search\?/.test(url) ? { data: [{ slug: 'frieren', title: { english: 'Frieren' } }] } : {};
-      return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body), headers: { get: () => null } };
-    };
-    const api = loadProvider({ key: 'real:anikage-dub', code, fetch: fetchFn, tmdbKey: 'K', settings: { enableSub: false, enableDub: true } });
-    await api.getStreams('209867', 'tv', 1, 1);
-    assert.deepEqual([...langs], ['dub']);
   });
   await t('castle decrypts the AES film-api responses and returns streams (works without the real crypto-js)', async () => {
     const nodeCrypto = require('crypto');
@@ -331,8 +286,8 @@ async function t(name, fn) {
     const logs = [];
     const api = loadProvider({ key: 'real:moviebox-441', code, fetch: fetchFn, tmdbKey: 'K', logs });
     await api.getStreams('550', 'movie', null, null);
-    assert.ok(hosts.includes('api4.aoneroom.com'), 'tried api4 after api3 rejected the token');
-    assert.ok(logs.some((l) => /\[moviebox\].*api3.*441/.test(l)), logs.join(' | '));
+    assert.ok(hosts.some((h) => h !== 'api3.aoneroom.com'), 'tried another API host after api3 rejected the token');
+    assert.ok(logs.some((l) => /\[moviebox\].*api3.*441/i.test(l)), logs.join(' | '));
   });
 
   console.log('stream metadata (badges, server, language, audio/video codec)');

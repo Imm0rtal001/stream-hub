@@ -173,7 +173,7 @@ async function t(name, fn) {
     assert.equal(r.json.streams[0].name, 'fake\n1080p');
   });
   await t('native (behaviorHints) provider contract: headers and quality are recovered from text', async () => {
-    const c = { tmdbKey: 'k'.repeat(32), providers: { fake: { enabled: false }, 'fake-native': { enabled: true } } };
+    const c = { tmdbKey: 'k'.repeat(32), providers: { fake: { enabled: false }, 'fake-native': { enabled: true } }, dns: { mode: 'doh' } }; // doh -> mocked resolver, works offline
     const r = await call('GET', `/c/${enc(c)}/stream/movie/tt1375666.json`);
     const s = r.json.streams;
     assert.equal(s.length, 2);
@@ -318,7 +318,7 @@ async function t(name, fn) {
     assert.deepEqual(meta, { quality: '', size: '', language: '', audioCodec: '', videoCodec: '', hdr: '', server: '', badges: [] });
   });
   await t('end to end: the Stremio stream gets a badge name and clean icon-prefixed description', async () => {
-    const c = { tmdbKey: 'k'.repeat(32), providers: { fake: { enabled: false }, 'fake-native': { enabled: true } } };
+    const c = { tmdbKey: 'k'.repeat(32), providers: { fake: { enabled: false }, 'fake-native': { enabled: true } }, dns: { mode: 'doh' } }; // doh -> mocked resolver, works offline
     const r = await call('GET', `/c/${enc(c)}/stream/movie/tt1375666.json`);
     const s = r.json.streams[0];
     assert.equal(s.name, 'fake-native\n4K');
@@ -393,6 +393,38 @@ async function t(name, fn) {
       delete process.env.UPSTASH_REDIS_REST_URL;
       delete process.env.UPSTASH_REDIS_REST_TOKEN;
     }
+  });
+  await t('profiles: file store gives one permanent link that follows every saved change', async () => {
+    const os = require('os');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'streamhub-'));
+    process.env.DATA_DIR = dir;
+    try {
+      const st = await call('GET', '/api/status');
+      assert.equal(st.json.profiles, true);
+      assert.equal(st.json.storage, 'file');
+      const c = await call('POST', '/api/profile', { body: { config: { tmdbKey: 'k'.repeat(32), providers: { fake: { enabled: true }, 'fake-native': { enabled: false } } } } });
+      const { id, secret } = c.json;
+      const link = `/u/${id}/manifest.json`;
+      const before = await call('GET', link);
+      assert.match(before.json.description, /fake/);
+      assert.equal(before.headers['cache-control'], 'no-store', 'live profile manifests are never CDN-cached');
+      // change settings: same link, new content
+      const put = await call('PUT', `/api/profile/${id}`, { headers: { 'x-profile-secret': secret }, body: { config: { tmdbKey: 'k'.repeat(32), providers: { fake: { enabled: false }, 'fake-native': { enabled: false } } } } });
+      assert.equal(put.statusCode, 200);
+      const after = await call('GET', link);
+      assert.doesNotMatch(after.json.description, /: fake/);
+      const nuv = await call('GET', `/u/${id}/nuvio/manifest.json`);
+      assert.equal(nuv.json.scrapers.find((x) => x.id === 'fake').enabled, false);
+      // survives a "restart": data is on disk, not in memory
+      const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'profiles.json'), 'utf8'));
+      assert.equal(Object.keys(onDisk).length, 1);
+      assert.equal((await call('PUT', `/api/profile/${id}`, { headers: { 'x-profile-secret': 'wrong' }, body: { config: {} } })).statusCode, 403);
+    } finally { delete process.env.DATA_DIR; fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+  await t('version is 1.3.0 in package.json, manifest.json and /health', async () => {
+    assert.equal(require('../package.json').version, '1.3.0');
+    assert.equal(require('../manifest.json').version, '1.3.0');
+    assert.equal((await call('GET', '/health')).json.version, '1.3.0');
   });
   await t('bad config path returns 400, unknown route 404', async () => {
     assert.equal((await call('GET', '/c/!!!/manifest.json')).statusCode, 400);

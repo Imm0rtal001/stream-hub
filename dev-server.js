@@ -13,6 +13,9 @@ if (fs.existsSync('.env')) {
     if (m && val && !(m[1] in process.env)) process.env[m[1]] = val;
   }
 }
+// No Redis? Save profiles to ./data/profiles.json so the same link keeps working locally.
+const hasRedis = (process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL) && (process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN);
+if (!hasRedis && !process.env.DATA_DIR) process.env.DATA_DIR = require('path').join(__dirname, 'data');
 const { handler } = require('./lib/router');
 const port = process.env.PORT || 3000;
 http.createServer(handler).listen(port, () => console.log(`StreamHub running at http://localhost:${port}`));

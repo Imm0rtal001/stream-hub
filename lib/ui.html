@@ -245,15 +245,25 @@ function paintSave() { const s = $('#saveline'); if (s) { s.textContent = saveSt
 function onChange() {
   localStorage.setItem(LS, JSON.stringify(compact(cfg)));
   renderChain();
-  if (profile) { saveState = { text: 'Saving…', kind: '' }; clearTimeout(saveTimer); saveTimer = setTimeout(syncProfile, 700); paintSave(); }
+  if (profile) { saveState = { text: 'Saving…', kind: '' }; clearTimeout(saveTimer); saveTimer = setTimeout(() => syncProfile(), 600); paintSave(); }
   if ($('#urls')) renderUrls();
 }
-async function syncProfile() {
+async function syncProfile(keepalive) {
+  if (!profile) return;
+  clearTimeout(saveTimer);
   try {
-    await api(`/api/profile/${profile.id}`, { method: 'PUT', headers: { 'X-Profile-Secret': profile.secret }, body: { config: compact(cfg) } });
-    saveState = { text: 'Saved to your profile', kind: 'ok' };
-  } catch (e) { saveState = { text: e.message, kind: 'bad' }; }
+    await api(`/api/profile/${profile.id}`, { method: 'PUT', keepalive: !!keepalive, headers: { 'X-Profile-Secret': profile.secret }, body: { config: compact(cfg) } });
+    saveState = { text: 'All changes saved at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), kind: 'ok' };
+  } catch (e) { saveState = { text: 'Not saved: ' + e.message, kind: 'bad' }; }
   paintSave();
+}
+// Save anything still waiting if the tab is closed or hidden.
+addEventListener('pagehide', () => { if (profile && saveTimer) syncProfile(true); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && profile && saveTimer) syncProfile(true); });
+async function createProfile() {
+  profile = await api('/api/profile', { method: 'POST', body: { config: compact(cfg) } });
+  localStorage.setItem(LP, JSON.stringify(profile));
+  saveState = { text: 'Link created. Changes save automatically.', kind: 'ok' };
 }
 
 const isOn = (p) => (typeof (cfg.providers[p.id] || {}).enabled === 'boolean' ? cfg.providers[p.id].enabled : p.enabled !== false);
@@ -327,22 +337,29 @@ function profileControls() {
   const wrap = h('div');
   const draw = () => {
     wrap.replaceChildren();
-    if (!status.profiles) { wrap.append(h('span', { class: 'pill', text: 'Saved profiles not connected' })); return; }
-    if (profile) {
+    if (!status.profiles) {
       wrap.append(
-        h('p', {}, h('span', { class: 'pill ok', text: 'Using saved profile' }), ' ', h('code', { text: profile.id })),
+        h('span', { class: 'pill warn', text: 'Auto-save not connected' }),
+        h('p', { class: 'note', text: 'Without storage the link has your settings inside it, so it changes whenever you change a setting. On Vercel add the free Upstash Redis integration (Storage tab, Marketplace) and redeploy. Running locally with npm run dev already saves to ./data.' }));
+      return;
+    }
+    if (profile) {
+      const editLink = `${origin}/u/${profile.id}#key=${profile.secret}`;
+      wrap.append(
+        h('p', {}, h('span', { class: 'pill ok', text: 'Permanent link, auto-saved' }), ' ', h('code', { text: profile.id })),
         h('p', { id: 'saveline', class: 'note ' + saveState.kind, text: saveState.text || 'Changes save automatically.' }),
         h('div', { class: 'actions' },
-          h('button', { class: 'btn', onclick: () => copy(`${profile.id}:${profile.secret}`) }, 'Copy edit key'),
+          h('button', { class: 'btn', onclick: () => copy(editLink) }, 'Copy edit link'),
+          h('button', { class: 'btn', onclick: () => syncProfile() }, 'Save now'),
           h('button', { class: 'btn quiet', onclick: () => { profile = null; localStorage.removeItem(LP); draw(); renderUrls(); toast('Switched to a link with settings inside'); } }, 'Stop using profile')),
-        h('p', { class: 'note', text: 'Keep the edit key. It is the only way to change this profile from another browser.' }));
+        h('p', { class: 'note', text: 'Keep the edit link private. Opening it on another device lets you change this same profile, and the install links above never change.' }));
     } else {
       wrap.append(h('div', { class: 'actions', style: 'margin-top:0' },
         h('button', { class: 'btn primary', onclick: async (e) => {
           e.target.disabled = true;
-          try { profile = await api('/api/profile', { method: 'POST', body: { config: compact(cfg) } }); localStorage.setItem(LP, JSON.stringify(profile)); toast('Profile saved'); draw(); renderUrls(); }
+          try { await createProfile(); toast('Permanent link created'); draw(); renderUrls(); }
           catch (err) { toast(err.message); e.target.disabled = false; }
-        } }, 'Save as profile'),
+        } }, 'Create permanent link'),
         h('button', { class: 'btn', onclick: async () => {
           const v = prompt('Paste an edit key (id:secret)'); if (!v) return;
           const [id, secret] = v.trim().split(':');
@@ -357,10 +374,10 @@ function profileControls() {
 function buildInstall() {
   return h('section', { id: 'sec-install' },
     h('h2', { text: 'Install' }),
-    h('p', { class: 'lead', text: 'Copy a link into your player. Every link carries your current settings.' }),
+    h('p', { class: 'lead', text: status.profiles ? 'Install these links once. Any change you make anywhere in this control centre is saved automatically and the same links serve the new settings.' : 'Copy a link into your player. Every link carries your current settings.' }),
     h('div', { id: 'urls' }),
     row('Where settings live', status.profiles
-      ? 'A saved profile keeps the link short and updates instantly. Change a setting and every player picks it up without reinstalling.'
+      ? 'Your settings are saved on the server as you change them. The link stays the same, so players pick up changes without reinstalling.'
       : 'Settings travel inside the link, so changing them later means installing the new link. Connect an Upstash Redis store in Vercel to enable saved profiles.',
     profileControls()));
 }
@@ -583,14 +600,29 @@ async function boot() {
   try { providers = (await api('/api/providers')).providers; } catch (e) { toast(e.message); }
 
   let banner = null;
+  const hashKey = (location.hash.match(/key=([a-f0-9]+)/) || [])[1];
+  if (!m && status.profiles && profile) {
+    // Returning visitor: the server copy is the source of truth (it may have been edited from another device).
+    try { const r = await api(`/api/profile/${profile.id}`, { headers: { 'X-Profile-Secret': profile.secret } }); cfg = merge(r.config); saveState = { text: 'Changes save automatically.', kind: 'ok' }; }
+    catch (e) {
+      if (/not found/i.test(e.message)) { profile = null; localStorage.removeItem(LP); banner = 'Your saved profile was not found on the server, so a new link was created. Reinstall it once.'; }
+      else banner = e.message;
+    }
+  }
+  if (!m && status.profiles && !profile) {
+    // First visit: create the permanent link automatically.
+    try { await createProfile(); } catch (e) { banner = 'Could not create a saved link: ' + e.message; }
+  }
   if (m && m[1] === 'c') { try { cfg = merge(unb64u(m[2])); profile = null; banner = 'Loaded from your addon link. Edits here create a new link.'; } catch { /* ignore */ } }
   if (m && m[1] === 'u') {
-    let secret = profile && profile.id === m[2] ? profile.secret : '';
+    let secret = profile && profile.id === m[2] ? profile.secret : (hashKey || '');
     if (!secret) { const v = prompt('Enter the edit key for this profile (id:secret)'); if (v) secret = v.split(':')[1]; }
     try {
       const r = await api(`/api/profile/${m[2]}`, { headers: { 'X-Profile-Secret': secret || '' } });
       cfg = merge(r.config); profile = { id: m[2], secret }; localStorage.setItem(LP, JSON.stringify(profile));
-      banner = 'Editing your saved profile. Changes apply everywhere immediately.';
+      saveState = { text: 'Changes save automatically.', kind: 'ok' };
+      banner = 'Editing your saved profile. Changes apply to the same link immediately.';
+      history.replaceState(null, '', location.pathname + '#install');
     } catch (e) { banner = e.message; }
   }
   rebuildAll();

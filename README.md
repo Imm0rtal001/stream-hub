@@ -57,24 +57,40 @@ still has `"framework": null`, and that the Vercel dashboard's own Project
 Settings → Framework Preset is set to **Other** — a manually-set dashboard
 preset can override `vercel.json` for that project.
 
-## How settings travel
+## One permanent link, settings auto-saved (v1.3.0)
 
-There's no database by default — settings live **inside the install URL**
-(`/c/<encoded-config>/manifest.json`), so nothing to host or migrate.
-Two upgrades, both optional:
+Open the control centre once and StreamHub creates your link for you:
 
-- **Set `TMDB_API_KEY` in Vercel** (Settings → Environment Variables) so it
-  never has to sit inside a link you share.
-- **Add a free [Upstash Redis](https://vercel.com/marketplace/upstash)
-  integration** from the Vercel Marketplace. StreamHub detects
-  `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` automatically and
-  switches Install to "saved profiles": a short `/u/<id>` link that updates
-  live when you change settings, protected by an edit key.
+```
+https://your-app.vercel.app/u/<id>/manifest.json         (Stremio)
+https://your-app.vercel.app/u/<id>/nuvio/manifest.json   (Nuvio)
+```
+
+Install it **once**. After that, every change you make in the control centre
+(providers on/off, per-provider settings, DNS, mirrors, TMDB key, sort, caps)
+is saved automatically about half a second later, and on tab close, and the
+**same link** serves the new settings. No reinstalling, no new link. Manifests
+for saved links are never CDN-cached; stream results are cached for 30 s.
+
+Where it saves, in order:
+
+1. **Upstash Redis** (use this on Vercel): Vercel dashboard, Storage,
+   Marketplace, Upstash Redis, connect it to the project, then redeploy.
+   `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` are detected automatically.
+2. **A JSON file** when running locally (`npm run dev` writes `./data/profiles.json`)
+   or on your own server (set `DATA_DIR`). Vercel's disk is ephemeral, so this
+   is not used there.
+3. Neither? The link falls back to the old behaviour: settings travel inside
+   `/c/<encoded-config>/...`, and the link changes whenever a setting does.
+
+Using the link from another device: **Install, Copy edit link** gives
+`/u/<id>#key=<secret>`; open it anywhere to edit the same profile. Keep it private.
+The TMDB key is stored server-side with the profile, never in the install link.
 
 ## Control centre
 
-- **Install** — Stremio and Nuvio links for your current settings, plus an
-  `stremio://` one-tap install button.
+- **Install** — your permanent Stremio and Nuvio links (auto-saved), an
+  `stremio://` one-tap install button, save status, and the edit link.
 - **Providers** — enable/disable each source, edit its own settings (the
   ones each provider already exposes, e.g. 4KHdHub's resolution/size
   limits), and set a mirror domain if a site moves.
@@ -169,6 +185,13 @@ the standard MD5 and HMAC-MD5 test vectors in `test/run.js`.
 - **Nuvio** runs the scraper files on your own device, so DNS tricks here
   only affect what StreamHub serves (mirrors); for the device itself, set
   Android's Private DNS to a DoH hostname if you need one.
+
+## Changelog
+
+- **1.3.0**: permanent auto-saved manifest link (profile created on first visit,
+  saved on every change and on tab close), file-store fallback for local/self-host,
+  edit link for other devices, no CDN caching of live manifests, `.env.example`.
+- **1.2.0**: control centre, DoH/DNS overrides, stream formatting.
 
 ## Notes
 

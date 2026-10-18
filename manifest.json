@@ -314,6 +314,20 @@
         "en",
         "hi"
       ]
+    },
+    {
+      "id": "vidbolt",
+      "name": "Vidbolt.",
+      "description": "vidbolt streaming with multiple language support (DASH + MP4)",
+      "version": "2.3.0",
+      "author": "Imm0rtal001",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/vidbolt.js",
+      "enabled": true,
+      "hasSettings": false,
+      "formats": ["mp4", "mpd"],
+      "logo": "https://vidbolt.xyz/logo.png",
+      "contentLanguage": ["en", "hi", "ta", "te"]
     }
   ]
 }

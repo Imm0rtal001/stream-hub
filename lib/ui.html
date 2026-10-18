@@ -239,31 +239,36 @@ let profile = readLS(LP, null); // { id, secret }
 let status = { profiles: false, serverTmdbKey: false };
 let providers = [];
 let saveState = { text: '', kind: '' };
-let saveTimer;
+let snap = null;          // the link that was last generated: { scope, json }
+let profileDirty = false; // settings changed since the saved profile was last updated by hand
 
+const currentJson = () => JSON.stringify(compact(cfg));
 function paintSave() { const s = $('#saveline'); if (s) { s.textContent = saveState.text; s.className = 'note ' + saveState.kind; } }
+function generateLink(quiet) {
+  snap = { scope: `/c/${b64u(compact(cfg))}`, json: currentJson() };
+  if (!quiet) { toast('New link generated'); if ($('#urls')) renderUrls(); }
+}
 function onChange() {
   localStorage.setItem(LS, JSON.stringify(compact(cfg)));
   renderChain();
-  if (profile) { saveState = { text: 'Saving…', kind: '' }; clearTimeout(saveTimer); saveTimer = setTimeout(() => syncProfile(), 600); paintSave(); }
+  if (profile) { profileDirty = true; saveState = { text: 'Unsaved changes. Press Save changes to update your profile.', kind: 'warn' }; paintSave(); }
   if ($('#urls')) renderUrls();
 }
-async function syncProfile(keepalive) {
+// Manual only: nothing is sent to the server until the person presses a button.
+async function syncProfile() {
   if (!profile) return;
-  clearTimeout(saveTimer);
   try {
-    await api(`/api/profile/${profile.id}`, { method: 'PUT', keepalive: !!keepalive, headers: { 'X-Profile-Secret': profile.secret }, body: { config: compact(cfg) } });
-    saveState = { text: 'All changes saved at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), kind: 'ok' };
+    await api(`/api/profile/${profile.id}`, { method: 'PUT', headers: { 'X-Profile-Secret': profile.secret }, body: { config: compact(cfg) } });
+    profileDirty = false;
+    saveState = { text: 'Saved at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), kind: 'ok' };
   } catch (e) { saveState = { text: 'Not saved: ' + e.message, kind: 'bad' }; }
-  paintSave();
+  paintSave(); if ($('#urls')) renderUrls();
 }
-// Save anything still waiting if the tab is closed or hidden.
-addEventListener('pagehide', () => { if (profile && saveTimer) syncProfile(true); });
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && profile && saveTimer) syncProfile(true); });
 async function createProfile() {
   profile = await api('/api/profile', { method: 'POST', body: { config: compact(cfg) } });
   localStorage.setItem(LP, JSON.stringify(profile));
-  saveState = { text: 'Link created. Changes save automatically.', kind: 'ok' };
+  profileDirty = false;
+  saveState = { text: 'Profile created.', kind: 'ok' };
 }
 
 const isOn = (p) => (typeof (cfg.providers[p.id] || {}).enabled === 'boolean' ? cfg.providers[p.id].enabled : p.enabled !== false);
@@ -272,7 +277,7 @@ function setEnabled(p, v) {
   if (v === (p.enabled !== false)) delete e.enabled; else e.enabled = v;
 }
 const origin = location.origin;
-const scopePath = () => (profile ? `/u/${profile.id}` : `/c/${b64u(compact(cfg))}`);
+const scopePath = () => (profile ? `/u/${profile.id}` : (snap || (generateLink(true), snap)).scope);
 
 /* ---------- header chain ---------- */
 function renderChain() {
@@ -318,9 +323,14 @@ function renderUrls() {
   const nuvio = origin + scope + '/nuvio/manifest.json';
   const host = stremio.replace(/^https?:\/\//, '');
   const warnings = [];
+  if (!profile && snap && snap.json !== currentJson()) {
+    warnings.push(h('div', {}, h('p', { class: 'note warn', style: 'margin-top:0', text: 'Your settings changed after this link was made. Generate a new link to include them, then install it again.' }),
+      h('div', { class: 'actions', style: 'margin:6px 0 14px' }, h('button', { class: 'btn primary', onclick: () => generateLink() }, 'Generate new link'))));
+  }
   if (!cfg.tmdbKey && !status.serverTmdbKey) warnings.push(h('p', { class: 'note bad', text: 'No TMDB key yet. Streams stay empty until you add one in Settings, or set TMDB_API_KEY in Vercel.' }));
-  if (cfg.tmdbKey && !profile) warnings.push(h('p', { class: 'note warn', text: 'Your TMDB key is inside this link, so anyone you share it with can read it. Set TMDB_API_KEY in Vercel or save a profile instead.' }));
-  if (!profile && stremio.length > 3000) warnings.push(h('p', { class: 'note warn', text: 'This link is getting long. A saved profile keeps it short.' }));
+  if (cfg.tmdbKey && !profile) warnings.push(h('p', { class: 'note warn', text: 'Your TMDB key is inside this link, so anyone you share it with can read it. Clear the key in Settings to use the server key, or set TMDB_API_KEY in Vercel.' }));
+  if (!profile && stremio.length > 3000) warnings.push(h('p', { class: 'note warn', text: 'This link is getting long. Saving a profile (below) gives a short one.' }));
+  if (profile && profileDirty) warnings.push(h('p', { class: 'note warn', text: 'This profile link still serves your last saved settings. Press Save changes below to update it.' }));
   box.replaceChildren(
     ...warnings,
     row('Stremio', 'Adds the addon to Stremio. Stream lists appear on any movie or episode page.',
@@ -337,33 +347,28 @@ function profileControls() {
   const wrap = h('div');
   const draw = () => {
     wrap.replaceChildren();
-    if (!status.profiles) {
-      wrap.append(
-        h('span', { class: 'pill warn', text: 'Auto-save not connected' }),
-        h('p', { class: 'note', text: 'Without storage the link has your settings inside it, so it changes whenever you change a setting. On Vercel add the free Upstash Redis integration (Storage tab, Marketplace) and redeploy. Running locally with npm run dev already saves to ./data.' }));
-      return;
-    }
+    if (!status.profiles) { wrap.append(h('span', { class: 'pill', text: 'Saved profiles not connected' }), h('p', { class: 'note', text: 'Optional. Connect an Upstash Redis store in Vercel to keep one short link that you update by hand.' })); return; }
     if (profile) {
       const editLink = `${origin}/u/${profile.id}#key=${profile.secret}`;
       wrap.append(
-        h('p', {}, h('span', { class: 'pill ok', text: 'Permanent link, auto-saved' }), ' ', h('code', { text: profile.id })),
-        h('p', { id: 'saveline', class: 'note ' + saveState.kind, text: saveState.text || 'Changes save automatically.' }),
+        h('p', {}, h('span', { class: 'pill ok', text: 'Using saved profile' }), ' ', h('code', { text: profile.id })),
+        h('p', { id: 'saveline', class: 'note ' + saveState.kind, text: saveState.text || 'Nothing is saved until you press Save changes.' }),
         h('div', { class: 'actions' },
+          h('button', { class: 'btn primary', onclick: () => syncProfile() }, 'Save changes'),
           h('button', { class: 'btn', onclick: () => copy(editLink) }, 'Copy edit link'),
-          h('button', { class: 'btn', onclick: () => syncProfile() }, 'Save now'),
-          h('button', { class: 'btn quiet', onclick: () => { profile = null; localStorage.removeItem(LP); draw(); renderUrls(); toast('Switched to a link with settings inside'); } }, 'Stop using profile')),
-        h('p', { class: 'note', text: 'Keep the edit link private. Opening it on another device lets you change this same profile, and the install links above never change.' }));
+          h('button', { class: 'btn quiet', onclick: () => { profile = null; localStorage.removeItem(LP); profileDirty = false; generateLink(true); draw(); renderUrls(); toast('Back to generated links'); } }, 'Stop using profile')),
+        h('p', { class: 'note', text: 'Keep the edit link private. Opening it on another device lets you change this profile.' }));
     } else {
       wrap.append(h('div', { class: 'actions', style: 'margin-top:0' },
-        h('button', { class: 'btn primary', onclick: async (e) => {
+        h('button', { class: 'btn', onclick: async (e) => {
           e.target.disabled = true;
-          try { await createProfile(); toast('Permanent link created'); draw(); renderUrls(); }
+          try { await createProfile(); toast('Profile saved'); draw(); renderUrls(); }
           catch (err) { toast(err.message); e.target.disabled = false; }
-        } }, 'Create permanent link'),
+        } }, 'Save as profile (short link)'),
         h('button', { class: 'btn', onclick: async () => {
           const v = prompt('Paste an edit key (id:secret)'); if (!v) return;
           const [id, secret] = v.trim().split(':');
-          try { const r = await api(`/api/profile/${id}`, { headers: { 'X-Profile-Secret': secret } }); cfg = merge(r.config); profile = { id, secret }; localStorage.setItem(LP, JSON.stringify(profile)); onChange(); rebuildAll(); toast('Profile loaded'); }
+          try { const r = await api(`/api/profile/${id}`, { headers: { 'X-Profile-Secret': secret } }); cfg = merge(r.config); profile = { id, secret }; localStorage.setItem(LP, JSON.stringify(profile)); profileDirty = false; onChange(); rebuildAll(); toast('Profile loaded'); }
           catch (err) { toast(err.message); }
         } }, 'Load existing profile')));
     }
@@ -374,12 +379,12 @@ function profileControls() {
 function buildInstall() {
   return h('section', { id: 'sec-install' },
     h('h2', { text: 'Install' }),
-    h('p', { class: 'lead', text: status.profiles ? 'Install these links once. Any change you make anywhere in this control centre is saved automatically and the same links serve the new settings.' : 'Copy a link into your player. Every link carries your current settings.' }),
+    h('p', { class: 'lead', text: 'Copy a link into your player. Each link carries the settings it was generated with. After changing settings, press Generate new link and install the new one.' }),
     h('div', { id: 'urls' }),
-    row('Where settings live', status.profiles
-      ? 'Your settings are saved on the server as you change them. The link stays the same, so players pick up changes without reinstalling.'
-      : 'Settings travel inside the link, so changing them later means installing the new link. Connect an Upstash Redis store in Vercel to enable saved profiles.',
-    profileControls()));
+    row('New link', 'Makes a fresh link from your current settings. Old links keep working with the settings they were made with.',
+      h('div', { class: 'actions', style: 'margin-top:0' }, h('button', { class: 'btn primary', onclick: () => generateLink() }, 'Generate new link'))),
+    row('Short link (optional)', 'Saves your settings on the server under one short link. Nothing saves by itself: press Save changes when you want the link to update.',
+      profileControls()));
 }
 
 /* ---------- Providers ---------- */
@@ -601,27 +606,15 @@ async function boot() {
 
   let banner = null;
   const hashKey = (location.hash.match(/key=([a-f0-9]+)/) || [])[1];
-  if (!m && status.profiles && profile) {
-    // Returning visitor: the server copy is the source of truth (it may have been edited from another device).
-    try { const r = await api(`/api/profile/${profile.id}`, { headers: { 'X-Profile-Secret': profile.secret } }); cfg = merge(r.config); saveState = { text: 'Changes save automatically.', kind: 'ok' }; }
-    catch (e) {
-      if (/not found/i.test(e.message)) { profile = null; localStorage.removeItem(LP); banner = 'Your saved profile was not found on the server, so a new link was created. Reinstall it once.'; }
-      else banner = e.message;
-    }
-  }
-  if (!m && status.profiles && !profile) {
-    // First visit: create the permanent link automatically.
-    try { await createProfile(); } catch (e) { banner = 'Could not create a saved link: ' + e.message; }
-  }
-  if (m && m[1] === 'c') { try { cfg = merge(unb64u(m[2])); profile = null; banner = 'Loaded from your addon link. Edits here create a new link.'; } catch { /* ignore */ } }
+  if (m && m[1] === 'c') { try { cfg = merge(unb64u(m[2])); profile = null; banner = 'Loaded from your addon link. After editing, press Generate new link.'; } catch { /* ignore */ } }
   if (m && m[1] === 'u') {
     let secret = profile && profile.id === m[2] ? profile.secret : (hashKey || '');
     if (!secret) { const v = prompt('Enter the edit key for this profile (id:secret)'); if (v) secret = v.split(':')[1]; }
     try {
       const r = await api(`/api/profile/${m[2]}`, { headers: { 'X-Profile-Secret': secret || '' } });
       cfg = merge(r.config); profile = { id: m[2], secret }; localStorage.setItem(LP, JSON.stringify(profile));
-      saveState = { text: 'Changes save automatically.', kind: 'ok' };
-      banner = 'Editing your saved profile. Changes apply to the same link immediately.';
+      saveState = { text: 'Nothing is saved until you press Save changes.', kind: 'ok' };
+      banner = 'Editing your saved profile. Press Save changes on the Install tab to update its link.';
       history.replaceState(null, '', location.pathname + '#install');
     } catch (e) { banner = e.message; }
   }

@@ -1,6 +1,7 @@
 'use strict';
 process.env.PROVIDERS_DIR = require('path').join(__dirname, 'fixtures', 'providers');
 delete process.env.TMDB_API_KEY;
+process.env.STREAMHUB_NO_DEFAULT_KEY = '1'; // tests exercise the "no key" paths; the built-in key is tested separately
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
@@ -421,10 +422,75 @@ async function t(name, fn) {
       assert.equal((await call('PUT', `/api/profile/${id}`, { headers: { 'x-profile-secret': 'wrong' }, body: { config: {} } })).statusCode, 403);
     } finally { delete process.env.DATA_DIR; fs.rmSync(dir, { recursive: true, force: true }); }
   });
-  await t('version is 1.3.0 in package.json, manifest.json and /health', async () => {
-    assert.equal(require('../package.json').version, '1.3.0');
-    assert.equal(require('../manifest.json').version, '1.3.0');
-    assert.equal((await call('GET', '/health')).json.version, '1.3.0');
+  await t('version is 1.5.0 in package.json, manifest.json and /health', async () => {
+    assert.equal(require('../package.json').version, '1.5.0');
+    assert.equal(require('../manifest.json').version, '1.5.0');
+    assert.equal((await call('GET', '/health')).json.version, '1.5.0');
+  });
+  console.log('v1.4.1 built-in TMDB key');
+  await t('built-in TMDB key is the default, env var wins, profiles never store it', async () => {
+    const { normalize: norm, userView, serverTmdbKey } = require('../lib/config');
+    delete process.env.STREAMHUB_NO_DEFAULT_KEY;
+    try {
+      assert.equal(norm({}).tmdbKey, '2315c44fee9ad6b8cd02933ac6393a60', 'works with no setup');
+      assert.equal(norm({ tmdbKey: 'mine'.repeat(8) }).tmdbKey, 'mine'.repeat(8), 'a key the user typed wins');
+      process.env.TMDB_API_KEY = ' envkey ';
+      assert.equal(serverTmdbKey(), 'envkey', 'env var beats the built-in key');
+      delete process.env.TMDB_API_KEY;
+      assert.equal(userView({}).tmdbKey, '', 'built-in key is not copied into stored profiles or links');
+      assert.equal((await call('GET', '/api/status')).json.serverTmdbKey, true);
+    } finally { process.env.STREAMHUB_NO_DEFAULT_KEY = '1'; }
+  });
+  console.log('v1.4.0 fixes');
+  await t('vidbolt: returns 1080p/2160p sources, tries other servers, rejects bad ids', async () => {
+    const code = fs.readFileSync(path.join(__dirname, '..', 'providers', 'vidbolt.js'), 'utf8');
+    const seen = [];
+    const api = loadProvider({ key: 'vidbolt-test', code, fetch: async (u) => {
+      seen.push(u);
+      const q = new URL(u).searchParams;
+      if (q.get('prefer') !== 'orion') return new Response(JSON.stringify({ stream: { sources: [] } }), { status: 200 });
+      return new Response(JSON.stringify({ stream: { server: 'orion', sources: [
+        { url: 'https://cdn.example/a.mpd', quality: '2160p' }, { url: 'https://cdn.example/a.mpd', quality: '2160p' },
+        { url: 'https://cdn.example/b.mp4', quality: '1080p' }, { url: 'https://cdn.example/c.mp4', quality: '480p' }] } }), { status: 200 });
+    } });
+    const out = await api.getStreams('27205', 'movie', null, null);
+    assert.equal(out.length, 2, 'duplicate url and 480p dropped');
+    assert.equal(out[0].quality, '2160p');
+    assert.ok(seen.some((u) => u.includes('prefer=orion')), 'fell back to the other servers');
+    assert.deepEqual(await api.getStreams('abc', 'movie', null, null), []);
+    assert.deepEqual(await api.getStreams('1399', 'tv', null, null), [], 'tv needs season and episode');
+    assert.ok(seen.some((u) => u.includes('type=movie&id=27205')));
+  });
+  await t('nuvio mirror rewrite only touches whole hostnames', async () => {
+    const { rewriteHosts } = require('../lib/nuvio');
+    const fake = 'a=https://mirror-me.example/x; b=https://xmirror-me.example/; c=mirror-me.example.evil.com; d="mirror-me.example"; e=mirror-me.example:8080/p; f=sub.mirror-me.example';
+    const out = rewriteHosts(fake, { 'mirror-me.example': 'new.example' });
+    assert.equal(out, 'a=https://new.example/x; b=https://xmirror-me.example/; c=mirror-me.example.evil.com; d="new.example"; e=new.example:8080/p; f=sub.mirror-me.example');
+    assert.equal(rewriteHosts('x', { '*.wild.example': 'z.example' }), 'x', 'wildcards are skipped');
+  });
+  await t('identical stream urls from two providers are shown once', async () => {
+    const { runProviders } = require('../lib/runner');
+    const cfg = normalize({ tmdbKey: 'k'.repeat(32), dns: { mode: 'doh' }, providers: { fake: { enabled: true }, 'fake-native': { enabled: true } } });
+    const out = await runProviders({ cfg, mediaType: 'movie', tmdbId: '27205' });
+    const urls = out.streams.map((s) => s.url);
+    assert.equal(new Set(urls).size, urls.length);
+  });
+  await t('rate limiter blocks bursts, resets by window', async () => {
+    const { rateLimit } = require('../lib/util');
+    for (let i = 0; i < 3; i++) assert.equal(rateLimit('t:a', 3, 50), true);
+    assert.equal(rateLimit('t:a', 3, 50), false);
+    assert.equal(rateLimit('t:b', 3, 50), true, 'other keys unaffected');
+    await new Promise((r) => setTimeout(r, 60));
+    assert.equal(rateLimit('t:a', 3, 50), true, 'window expired');
+  });
+  await t('reserved ranges 198.18/15 are refused', async () => {
+    const { isPrivateIp } = require('../lib/dns');
+    assert.equal(isPrivateIp('198.18.0.1'), true);
+    assert.equal(isPrivateIp('198.20.0.1'), false);
+  });
+  await t('version is 1.5.0 everywhere', async () => {
+    assert.equal(require('../package.json').version, '1.5.0');
+    assert.equal(require('../manifest.json').version, '1.5.0');
   });
   await t('bad config path returns 400, unknown route 404', async () => {
     assert.equal((await call('GET', '/c/!!!/manifest.json')).statusCode, 400);

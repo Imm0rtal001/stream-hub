@@ -1,6 +1,6 @@
 {
   "name": "streamhub",
-  "version": "1.3.0",
+  "version": "1.5.0",
   "private": true,
   "description": "Stremio addon + Nuvio scraper repository with a control centre, DoH/DNS overrides, one-click Vercel deploy",
   "license": "MIT",
@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "node dev-server.js",
-    "test": "node test/run.js"
+    "test": "node test/run.js && node test/ui-flow.js"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

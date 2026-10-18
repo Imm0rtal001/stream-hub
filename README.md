@@ -1,9 +1,7 @@
 # StreamHub
 
 A self-hosted **Stremio addon** and **Nuvio scraper repository**, built from
-your 14 providers (4KHdHub, Castle, CineFreak, Cinejoy, Fibwatch, HDHub4u,
-MovieBox, MoviesDrive, MoviesHunt, MultiMovies, Netmirror, Rogmovies,
-UHDMovies, VegaMovies), with a web **control centre** to turn sources
+your 15 providers (4Khdhub, CineFreak, Mapple, MoviesHunt, MoviesDrive, MultiMovies, Castle, HDHub4u, Netmirror, MovieBox, Cinejoy, Rogmovies, UHDMovies, VegaMovies, Vidbolt), with a web **control centre** to turn sources
 on/off, tune per-provider settings, override DNS or mirror a domain that
 moved, run a live test, and get one-click install links — all deployable to
 Vercel for free.
@@ -57,40 +55,22 @@ still has `"framework": null`, and that the Vercel dashboard's own Project
 Settings → Framework Preset is set to **Other** — a manually-set dashboard
 preset can override `vercel.json` for that project.
 
-## One permanent link, settings auto-saved (v1.3.0)
+## Links: generate a new one when settings change (v1.5.0)
 
-Open the control centre once and StreamHub creates your link for you:
+Nothing saves by itself. On the **Install** tab your Stremio and Nuvio links carry
+the settings they were generated with (`/c/<encoded-config>/manifest.json`). After you
+change a setting the tab tells you the link is out of date; press **Generate new
+link**, copy it and install it. Old links keep working with their old settings.
 
-```
-https://your-app.vercel.app/u/<id>/manifest.json         (Stremio)
-https://your-app.vercel.app/u/<id>/nuvio/manifest.json   (Nuvio)
-```
-
-Install it **once**. After that, every change you make in the control centre
-(providers on/off, per-provider settings, DNS, mirrors, TMDB key, sort, caps)
-is saved automatically about half a second later, and on tab close, and the
-**same link** serves the new settings. No reinstalling, no new link. Manifests
-for saved links are never CDN-cached; stream results are cached for 30 s.
-
-Where it saves, in order:
-
-1. **Upstash Redis** (use this on Vercel): Vercel dashboard, Storage,
-   Marketplace, Upstash Redis, connect it to the project, then redeploy.
-   `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` are detected automatically.
-2. **A JSON file** when running locally (`npm run dev` writes `./data/profiles.json`)
-   or on your own server (set `DATA_DIR`). Vercel's disk is ephemeral, so this
-   is not used there.
-3. Neither? The link falls back to the old behaviour: settings travel inside
-   `/c/<encoded-config>/...`, and the link changes whenever a setting does.
-
-Using the link from another device: **Install, Copy edit link** gives
-`/u/<id>#key=<secret>`; open it anywhere to edit the same profile. Keep it private.
-The TMDB key is stored server-side with the profile, never in the install link.
+Optional short link: with an Upstash Redis store connected on Vercel (or running
+locally, where `./data/profiles.json` is used), **Save as profile** gives one short
+`/u/<id>/manifest.json` link. It updates only when you press **Save changes**, and
+**Copy edit link** lets you edit the same profile from another device.
 
 ## Control centre
 
-- **Install** — your permanent Stremio and Nuvio links (auto-saved), an
-  `stremio://` one-tap install button, save status, and the edit link.
+- **Install** — Stremio and Nuvio links, a **Generate new link** button, an
+  `stremio://` one-tap install button, and an optional manually saved short link.
 - **Providers** — enable/disable each source, edit its own settings (the
   ones each provider already exposes, e.g. 4KHdHub's resolution/size
   limits), and set a mirror domain if a site moves.
@@ -187,6 +167,24 @@ the standard MD5 and HMAC-MD5 test vectors in `test/run.js`.
   Android's Private DNS to a DoH hostname if you need one.
 
 ## Changelog
+
+- **1.5.0**: auto-save removed. Links are generated on demand with **Generate new link**
+  (with a notice when settings changed since the last link); optional short profile
+  link is saved only when you press **Save changes**.
+
+- **1.4.1**: permanent built-in TMDB key, so streams work with zero setup. Order of
+  precedence: key typed in Settings, then `TMDB_API_KEY` env var, then the built-in
+  key (`lib/config.js`). It stays on the server and is never written into profiles or
+  install links. Set `STREAMHUB_NO_DEFAULT_KEY=1` to turn it off.
+
+- **1.4.0**: added the Vidbolt provider (fixed its `vidbolt,js` filename typo, which
+  stopped it loading). Fixes: Nuvio mirror rewrites now replace whole hostnames only
+  (`x.com` no longer corrupts `mx.com` or `x.com.evil.net`); stream requests now stay
+  inside Vercel's 60 s limit (TMDB lookup time comes off the providers' budget);
+  duplicate stream links from different providers are shown once; the editor no
+  longer sends a redundant save when the tab is hidden; compiled-provider cache
+  follows file changes; TMDB env key is trimmed; 198.18.0.0/15 added to blocked
+  ranges; rate limits on `/api/profile` and `/api/test`.
 
 - **1.3.0**: permanent auto-saved manifest link (profile created on first visit,
   saved on every change and on tab close), file-store fallback for local/self-host,

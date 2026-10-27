@@ -291,6 +291,31 @@ async function t(name, fn) {
     assert.ok(logs.some((l) => /\[moviebox\].*api3.*441/i.test(l)), logs.join(' | '));
   });
 
+  await t('moviebox full pipeline: token, search, match, play-info; survives a rejecting host; logs every stage', async () => {
+    const code = fs.readFileSync(path.join(realDir, 'moviebox.js'), 'utf8');
+    const R = (status, body, hdr = {}) => ({ ok: status === 200, status, headers: { get: (k) => hdr[k] ?? null }, json: async () => body, text: async () => JSON.stringify(body) });
+    const fetchFn = async (url) => {
+      url = String(url); const u = new URL(url);
+      if (/themoviedb/.test(url)) return R(200, { title: 'Fight Club', release_date: '1999-10-15', vote_average: 8.4 });
+      if (u.host === 'api3.aoneroom.com') return R(441, {});
+      if (/ranking-list/.test(url)) return R(200, {}, { 'x-user': JSON.stringify({ token: 'aaa.bbb.ccc' }) });
+      if (/search\/v2/.test(url)) return R(200, { data: { results: [{ subjects: [{ subjectId: '111', title: 'Fight Club', releaseDate: '1999-10-15', subjectType: 1 }] }] } });
+      if (/subject-api\/get\?/.test(url)) return R(200, { data: { detailPath: 'fight-club', dubs: [] } });
+      if (/play-info/.test(url)) return R(200, { data: { streams: [{ url: 'https://cdn.test/a.m3u8', format: 'HLS', resolutions: '480' }] } });
+      if (/subject\/play/.test(url)) return R(200, { data: { streams: [{ url: 'https://cdn.test/b.mp4', resolutions: '1080' }] } });
+      return R(404, {});
+    };
+    const logs = [];
+    const api = loadProvider({ key: 'real:moviebox-full', code, fetch: fetchFn, tmdbKey: 'K', logs });
+    const out = await api.getStreams('550', 'movie', null, null);
+    assert.equal(out.length, 1, logs.join(' | '));
+    assert.ok(/1080p/.test(out[0].quality) && /MP4/.test(out[0].quality), 'the 1080p MP4 is returned: ' + out[0].quality);
+    assert.ok(!out.some((s) => /480p/.test(s.quality)), '480p is dropped because a better enabled resolution exists');
+    for (const stage of [/token obtained/, /search "Fight Club"/, /matched subject 111/, /play-info 111/, /done: 1 stream/]) {
+      assert.ok(logs.some((l) => stage.test(l)), `log for ${stage}: ` + logs.join(' | '));
+    }
+  });
+
   console.log('stream metadata (badges, server, language, audio/video codec)');
   const { parseStreamMeta } = require('../lib/streamMeta');
   await t('parses language/audio/codec/server out of a HubCloud-style release string', () => {
@@ -422,10 +447,10 @@ async function t(name, fn) {
       assert.equal((await call('PUT', `/api/profile/${id}`, { headers: { 'x-profile-secret': 'wrong' }, body: { config: {} } })).statusCode, 403);
     } finally { delete process.env.DATA_DIR; fs.rmSync(dir, { recursive: true, force: true }); }
   });
-  await t('version is 1.5.0 in package.json, manifest.json and /health', async () => {
-    assert.equal(require('../package.json').version, '1.5.0');
-    assert.equal(require('../manifest.json').version, '1.5.0');
-    assert.equal((await call('GET', '/health')).json.version, '1.5.0');
+  await t('version is 1.6.0 in package.json, manifest.json and /health', async () => {
+    assert.equal(require('../package.json').version, '1.6.0');
+    assert.equal(require('../manifest.json').version, '1.6.0');
+    assert.equal((await call('GET', '/health')).json.version, '1.6.0');
   });
   console.log('v1.4.1 built-in TMDB key');
   await t('built-in TMDB key is the default, env var wins, profiles never store it', async () => {
@@ -488,9 +513,9 @@ async function t(name, fn) {
     assert.equal(isPrivateIp('198.18.0.1'), true);
     assert.equal(isPrivateIp('198.20.0.1'), false);
   });
-  await t('version is 1.5.0 everywhere', async () => {
-    assert.equal(require('../package.json').version, '1.5.0');
-    assert.equal(require('../manifest.json').version, '1.5.0');
+  await t('version is 1.6.0 everywhere', async () => {
+    assert.equal(require('../package.json').version, '1.6.0');
+    assert.equal(require('../manifest.json').version, '1.6.0');
   });
   await t('bad config path returns 400, unknown route 404', async () => {
     assert.equal((await call('GET', '/c/!!!/manifest.json')).statusCode, 400);

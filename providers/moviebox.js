@@ -1,4 +1,13 @@
 const PROVIDER = "MovieBox";
+// Every stage logs here; StreamHub shows these lines on the Test tab (Provider logs).
+const dbg = (...args) => console.log("[moviebox]", ...args);
+const dbgWarn = (...args) => console.warn("[moviebox]", ...args);
+const REQUEST_TIMEOUT_MS = 8000; // per HTTP call, so one dead host cannot eat the whole budget
+const DEADLINE = Date.now() + 22000; // stop trying more hosts after this
+const timeoutSignal = () => (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined);
+async function bodySnippet(response) {
+    try { return String(await response.text()).replace(/\s+/g, " ").slice(0, 160); } catch (e) { return ""; }
+}
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const TMDB_KEY = (typeof TMDB_API_KEY !== "undefined" && TMDB_API_KEY) || "307b7b8ef035c6aa336900aef4e203bd";
 const WEB_USER_AGENT =
@@ -39,7 +48,7 @@ const LANGUAGE_NAMES = {
 const RESOLUTION_OPTIONS = [
     { settingKey: "res_2160p", resolution: "2160p", enabledByDefault: true },
     { settingKey: "res_1080p", resolution: "1080p", enabledByDefault: true },
-    { settingKey: "res_720p", resolution: "720p", enabledByDefault: false },
+    { settingKey: "res_720p", resolution: "720p", enabledByDefault: true },
 ];
 const KNOWN_RESOLUTIONS = ["2160", "1440", "1080", "720", "480", "360", "240"];
 const RESOLUTION_RANK = { "2160p": 5, "1440p": 4, "1080p": 3, "720p": 2, "480p": 1 };
@@ -189,6 +198,8 @@ async function sendSignedRequest(method, url, body, withAuth) {
     }
     const options = { method, headers };
     if (body != null) options.body = body;
+    const signal = timeoutSignal();
+    if (signal) options.signal = signal;
     const response = await fetch(url, options);
     const refreshedToken = parseTokenHeader(response.headers.get("x-user"));
     if (refreshedToken) {
@@ -198,44 +209,93 @@ async function sendSignedRequest(method, url, body, withAuth) {
     return response;
 }
 
+const TOKEN_URLS = [
+    "https://apig.inmoviebox.com/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=4516404531735022304&page=1&perPage=1",
+    "https://api3.aoneroom.com/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=4516404531735022304&page=1&perPage=1",
+];
+let tokenAttempts = 0;
+
 async function requestToken() {
-    try {
-        const response = await sendSignedRequest(
-            "GET",
-            "https://apig.inmoviebox.com/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=4516404531735022304&page=1&perPage=1",
-            null,
-            false
-        );
-        const token = parseTokenHeader(response.headers.get("x-user"));
-        if (token) authToken = token;
-    } catch (error) { }
+    tokenAttempts++;
+    for (const tokenUrl of TOKEN_URLS) {
+        const host = tokenUrl.split("/")[2];
+        try {
+            const response = await sendSignedRequest("GET", tokenUrl, null, false);
+            const token = parseTokenHeader(response.headers.get("x-user"));
+            if (token) {
+                authToken = token;
+                dbg(`token obtained from ${host}`);
+                return authToken;
+            }
+            dbgWarn(`token request to ${host}: HTTP ${response.status}, no x-user token in the response`);
+        } catch (error) {
+            dbgWarn(`token request to ${host} failed: ${error && error.message ? error.message : error}`);
+        }
+    }
+    dbgWarn("no auth token could be obtained; requests continue without one");
     return authToken;
 }
 
 function ensureToken(forceRefresh) {
-    if (forceRefresh || !pendingTokenRequest) pendingTokenRequest = requestToken();
+    // A finished request that produced no token may be retried (twice at most); a token that exists is reused.
+    const needsRetry = !authToken && pendingTokenRequest && pendingTokenRequest.done && tokenAttempts < 3;
+    if (forceRefresh || !pendingTokenRequest || needsRetry) {
+        const request = requestToken();
+        request.then(() => { request.done = true; }, () => { request.done = true; });
+        pendingTokenRequest = request;
+    }
     return pendingTokenRequest;
 }
 
+const MOBILE_API_HOSTS = [
+    "api3.aoneroom.com",
+    "api4.aoneroom.com",
+    "api5.aoneroom.com",
+    "api6.aoneroom.com",
+];
+let preferredHostIndex = 0;
+
+// Try the host that worked last first, then fall through to the others.
+// 200 and 404 are answers; 401/441 (token), 403, 429, 5xx and network errors move on to the next host.
 async function callMobileApi(method, pathAndQuery, body) {
-    try {
-        const url = `https://api3.aoneroom.com${pathAndQuery}`;
-        const tokenBefore = authToken;
-        let response = await sendSignedRequest(method, url, body, true);
-        if ([401, 441].includes(response.status)) {
-            if (!authToken || authToken === tokenBefore) await ensureToken(true);
-            response = await sendSignedRequest(method, url, body, true);
+    const label = pathAndQuery.split("?")[0].replace("/wefeed-mobile-bff/", "");
+    for (let i = 0; i < MOBILE_API_HOSTS.length; i++) {
+        if (i > 0 && Date.now() > DEADLINE) { dbgWarn(`${label}: out of time, not trying more hosts`); break; }
+        const hostIndex = (preferredHostIndex + i) % MOBILE_API_HOSTS.length;
+        const host = MOBILE_API_HOSTS[hostIndex];
+        try {
+            const url = `https://${host}${pathAndQuery}`;
+            const tokenBefore = authToken;
+            let response = await sendSignedRequest(method, url, body, true);
+            if ([401, 441].includes(response.status)) {
+                dbgWarn(`${host} rejected the token (HTTP ${response.status}) on ${label}, refreshing it`);
+                if (!authToken || authToken === tokenBefore) await ensureToken(true);
+                response = await sendSignedRequest(method, url, body, true);
+            }
+            if (response.status === 200 || response.status === 404) {
+                preferredHostIndex = hostIndex;
+                return response;
+            }
+            dbgWarn(`${host} ${label}: HTTP ${response.status} ${await bodySnippet(response)} - trying next host`);
+        } catch (error) {
+            dbgWarn(`${host} ${label} failed: ${error && error.message ? error.message : error} - trying next host`);
         }
-        return response.status > 0 && response.status < 500 ? response : null;
-    } catch (error) {
-        return null;
     }
+    dbgWarn(`${label}: every API host failed`);
+    return null;
 }
 
 async function fetchMobileJson(method, pathAndQuery, payload) {
+    const label = pathAndQuery.split("?")[0].replace("/wefeed-mobile-bff/", "");
     const response = await callMobileApi(method, pathAndQuery, payload ? JSON.stringify(payload) : null);
-    if (!response || response.status !== 200) return null;
-    return await response.json();
+    if (!response) return null;
+    if (response.status !== 200) { dbg(`${label}: HTTP ${response.status}`); return null; }
+    let json;
+    try { json = await response.json(); } catch (error) { dbgWarn(`${label}: response was not JSON`); return null; }
+    if (json && json.code != null && Number(json.code) !== 0 && !json.data) {
+        dbgWarn(`${label}: API error code ${json.code} ${json.message || json.msg || ""}`);
+    }
+    return json;
 }
 
 async function fetchSubjectDetail(subjectId) {
@@ -249,9 +309,10 @@ async function fetchTmdbMetadata(tmdbId, mediaType) {
     let details;
     try {
         const response = await fetch(`${TMDB_BASE_URL}/${isTv ? "tv" : "movie"}/${encodeURIComponent(tmdbId)}?api_key=${TMDB_KEY}`);
-        if (!response.ok) return null;
+        if (!response.ok) { dbgWarn(`TMDB lookup failed: HTTP ${response.status}`); return null; }
         details = await response.json();
     } catch (error) {
+        dbgWarn(`TMDB lookup failed: ${error && error.message ? error.message : error}`);
         return null;
     }
     if (!details) return null;
@@ -261,7 +322,7 @@ async function fetchTmdbMetadata(tmdbId, mediaType) {
         const title = candidate ? String(candidate).trim() : "";
         if (title && !titles.includes(title)) titles.push(title);
     });
-    if (!titles.length) return null;
+    if (!titles.length) { dbgWarn("TMDB returned no title"); return null; }
 
     const year = parseInt(String(details.release_date || details.first_air_date || "").slice(0, 4), 10);
     return {
@@ -351,6 +412,24 @@ function scoreSearchResult(result, metadata) {
     );
 }
 
+function collectSubjects(json) {
+    const data = json && json.data;
+    if (!data) return [];
+    const subjects = [];
+    const add = (subject) => {
+        if (subject && subject.subjectId != null && subject.title) subjects.push(subject);
+    };
+    // Known shape: data.results = [{ subjects: [...] }]. Also accept flatter shapes in case the API changes.
+    [data.results, data.items, data.subjects, data.list].forEach((group) => {
+        if (!Array.isArray(group)) return;
+        group.forEach((entry) => {
+            if (entry && Array.isArray(entry.subjects)) entry.subjects.forEach(add);
+            else add(entry);
+        });
+    });
+    return subjects;
+}
+
 async function searchCatalog(keyword) {
     const json = await fetchMobileJson("POST", "/wefeed-mobile-bff/subject-api/search/v2", {
         page: 1,
@@ -358,15 +437,8 @@ async function searchCatalog(keyword) {
         keyword,
         restrictKid: 0,
     });
-    const groups = json && json.data && json.data.results;
-    if (!Array.isArray(groups)) return [];
-    const subjects = [];
-    groups.forEach((group) => {
-        if (!group || !Array.isArray(group.subjects)) return;
-        group.subjects.forEach((subject) => {
-            if (subject && subject.subjectId != null && subject.title) subjects.push(subject);
-        });
-    });
+    const subjects = collectSubjects(json);
+    dbg(`search "${keyword}": ${subjects.length} result(s)`);
     return subjects;
 }
 
@@ -375,19 +447,18 @@ async function findMatchingSubjectId(metadata) {
     if (metadata.titles[1] && normalizeTitle(metadata.titles[1]) !== normalizeTitle(metadata.titles[0])) {
         queries.push(metadata.titles[1]);
     }
+    if (metadata.year) queries.push(`${metadata.titles[0]} ${metadata.year}`);
     for (const query of queries) {
         const results = await searchCatalog(query);
-        let bestResult = null;
-        let bestScore = -Infinity;
-        for (const result of results) {
-            const score = scoreSearchResult(result, metadata);
-            if (score > bestScore) {
-                bestScore = score;
-                bestResult = result;
-            }
+        const scored = results
+            .map((result) => ({ result, score: scoreSearchResult(result, metadata) }))
+            .sort((a, b) => b.score - a.score);
+        if (scored.length) {
+            dbg("best matches: " + scored.slice(0, 3).map((x) => `"${x.result.title}" (${String(x.result.releaseDate || "").slice(0, 4) || "?"}) score ${x.score}`).join("; "));
         }
-        if (bestResult && bestScore >= 40) return String(bestResult.subjectId);
+        if (scored.length && scored[0].score >= 40) return String(scored[0].result.subjectId);
     }
+    dbgWarn(`no search result matched "${metadata.titles[0]}" (${metadata.year || "no year"}) with a score of 40 or more`);
     return null;
 }
 
@@ -537,18 +608,22 @@ async function fetchMobileStreams(playback, site) {
         null
     );
     const streams = json && json.data && json.data.streams;
-    if (!Array.isArray(streams)) return [];
+    if (!Array.isArray(streams)) {
+        dbgWarn(`play-info for ${playback.subjectId}: no streams array`);
+        return { adaptive: [], mp4: [] };
+    }
 
     const baseHeaders = buildSiteHeaders(site.origin, site.path, playback.subjectId);
-    const isDash = (stream) => String(stream.format || "").toUpperCase() === "DASH" || String(stream.url || "").includes(".mpd");
-    const dashFirst = streams.filter(isDash).concat(streams.filter((stream) => !isDash(stream)));
-
-    const candidates = [];
-    for (const stream of dashFirst) {
+    const adaptive = [];
+    const mp4 = [];
+    let skipped = 0;
+    for (const stream of streams) {
         const candidate = buildStreamCandidate(stream, baseHeaders, stream.format, playback);
-        if (candidate && candidate.format !== "MP4") candidates.push(candidate);
+        if (!candidate) { skipped++; continue; }
+        (candidate.format === "MP4" ? mp4 : adaptive).push(candidate);
     }
-    return candidates;
+    dbg(`play-info ${playback.subjectId}: ${streams.length} stream(s) -> ${adaptive.length} HLS/DASH, ${mp4.length} MP4, ${skipped} placeholder/empty`);
+    return { adaptive, mp4 };
 }
 
 async function fetchWebStreamsFromOrigin(origin, path, playback) {
@@ -566,15 +641,21 @@ async function fetchWebStreamsFromOrigin(origin, path, playback) {
         const token = authToken || (await ensureToken(false));
         if (token) headers["Authorization"] = `Bearer ${token}`;
 
+        const options = { headers };
+        const signal = timeoutSignal();
+        if (signal) options.signal = signal;
         const response = await fetch(
             `${origin}/wefeed-h5api-bff/subject/play?subjectId=${playback.subjectId}&se=${playback.season}&ep=${playback.episode}&detailPath=${path}&streamSignType=1&supportCodecs%5Bhevc%5D=1&supportCodecs%5Bh264%5D=1`,
-            { headers }
+            options
         );
-        if (response.status !== 200) return null;
+        if (response.status !== 200) { dbgWarn(`web play ${origin}: HTTP ${response.status}`); return null; }
         const json = await response.json();
         const streams = json && json.data && json.data.streams;
-        return Array.isArray(streams) && streams.length ? { origin, streams } : null;
+        if (!Array.isArray(streams) || !streams.length) { dbg(`web play ${origin}: no streams`); return null; }
+        dbg(`web play ${origin}: ${streams.length} stream(s)`);
+        return { origin, streams };
     } catch (error) {
+        dbgWarn(`web play ${origin} failed: ${error && error.message ? error.message : error}`);
         return null;
     }
 }
@@ -643,18 +724,31 @@ async function resolveAudioTrack(context, track) {
         if (!origins.includes("https://h5-api.aoneroom.com")) origins.push("https://h5-api.aoneroom.com");
 
         const playback = { subjectId: track.subjectId, season: context.season, episode: context.episode };
-        const [mobileStreams, webStreams] = await Promise.all([
-            fetchMobileStreams(playback, site).catch(() => []),
-            fetchWebStreams(origins, site.path || "", playback).catch(() => []),
+        const [mobile, webStreams] = await Promise.all([
+            fetchMobileStreams(playback, site).catch((error) => { dbgWarn(`mobile streams failed: ${error && error.message}`); return { adaptive: [], mp4: [] }; }),
+            fetchWebStreams(origins, site.path || "", playback).catch((error) => { dbgWarn(`web streams failed: ${error && error.message}`); return []; }),
         ]);
-        const candidates = mobileStreams.concat(webStreams).filter((candidate) => isResolutionEnabled(candidate.resolution));
+        let all = mobile.adaptive.concat(webStreams);
+        if (!all.length && mobile.mp4.length) {
+            dbg(`track "${track.language}": only mobile MP4 links were available, using those`);
+            all = mobile.mp4;
+        }
+        if (!readToggle("dash", true)) all = all.filter((candidate) => candidate.format !== "DASH");
+
+        let candidates = all.filter((candidate) => isResolutionEnabled(candidate.resolution));
+        if (!candidates.length && all.length) {
+            dbg(`track "${track.language}": none of the enabled resolutions exist (found ${[...new Set(all.map((c) => c.resolution))].join(", ")}); returning what is available`);
+            candidates = all;
+        }
+        dbg(`track "${track.language}" (${track.subjectId}): ${candidates.length} candidate stream(s)`);
         if (!candidates.length) return [];
 
-        const subtitles = readToggle("subtitles", true)
+        const subtitles = readToggle("subtitles", false)
             ? await fetchSubtitles(candidates[0].streamId, track.language, track.subjectId).catch(() => [])
             : [];
         return candidates.map((candidate) => ({ ...candidate, language: track.language, subtitles }));
     } catch (error) {
+        dbgWarn(`track "${track.language}" failed: ${error && error.message ? error.message : error}`);
         return [];
     }
 }
@@ -669,7 +763,9 @@ function dedupeByUrl(candidates) {
 }
 
 function sortByResolution(candidates) {
-    return [...candidates].sort((a, b) => resolutionRank(b.resolution) - resolutionRank(a.resolution));
+    const formatRank = { MP4: 3, HLS: 2, DASH: 1 }; // Stremio plays MP4 and HLS; DASH is a last resort
+    return [...candidates].sort((a, b) =>
+        resolutionRank(b.resolution) - resolutionRank(a.resolution) || (formatRank[b.format] || 0) - (formatRank[a.format] || 0));
 }
 
 function toStreamResult(candidate, position) {
@@ -696,11 +792,18 @@ async function onSettings() {
             defaultValue: false,
             description: "Subtitles for each audio track [Default & Recommended: Disabled]",
         },
+        {
+            type: "toggle",
+            key: "dash",
+            label: "Include DASH (.mpd) streams",
+            defaultValue: true,
+            description: "Stremio cannot play DASH. Turn off to keep only MP4/HLS links. DASH is always listed last.",
+        },
         { type: "header", label: "Resolutions" },
-        { type: "info", label: "Only the enabled resolutions are returned. Anything below 720p is always removed." },
+        { type: "info", label: "Only the enabled resolutions are returned. If none of them exist for a title, the best available quality is returned instead." },
         { type: "toggle", key: "res_2160p", label: "2160p (4K)", defaultValue: true },
         { type: "toggle", key: "res_1080p", label: "1080p", defaultValue: true },
-        { type: "toggle", key: "res_720p", label: "720p", defaultValue: false },
+        { type: "toggle", key: "res_720p", label: "720p", defaultValue: true },
         { type: "header", label: "Audio tracks" },
         { type: "info", label: "Original and English Dub are always on. Turned-off tracks are skipped entirely and never requested." },
     ];
@@ -719,18 +822,26 @@ async function getStreams(tmdbId, mediaType, season, episode) {
     try {
         const isTv = mediaType === "tv";
         if (!isTv && mediaType !== "movie") return [];
-        if (isTv && (season == null || episode == null)) return [];
+        if (isTv && (season == null || episode == null)) { dbgWarn("series request without season/episode"); return []; }
+        dbg(`start: tmdb ${tmdbId} ${mediaType}${isTv ? ` S${season}E${episode}` : ""}`);
 
         const [metadata] = await Promise.all([fetchTmdbMetadata(tmdbId, mediaType), ensureToken(false)]);
         if (!metadata) return [];
+        dbg(`title: ${metadata.titles.join(" | ")} (${metadata.year || "?"}), token: ${authToken ? "yes" : "NO"}`);
 
         const subjectId = await findMatchingSubjectId(metadata);
         if (!subjectId) return [];
+        dbg(`matched subject ${subjectId}`);
 
-        const subject = await fetchSubjectDetail(subjectId);
-        if (!subject) return [];
+        let subject = await fetchSubjectDetail(subjectId);
+        if (!subject) {
+            // Detail failed: still try the original audio track with default site info.
+            dbgWarn(`subject detail ${subjectId} unavailable; continuing with the original track only`);
+            subject = {};
+        }
 
         const enabledTracks = extractAudioTracks(subject, subjectId).filter(isTrackEnabled);
+        dbg(`audio tracks: ${enabledTracks.map((t) => t.language).join(", ") || "none enabled"}`);
         if (!enabledTracks.length) return [];
 
         const context = {
@@ -741,8 +852,11 @@ async function getStreams(tmdbId, mediaType, season, episode) {
         };
         const trackResults = await Promise.all(enabledTracks.map((track) => resolveAudioTrack(context, track)));
 
-        return sortByResolution(dedupeByUrl(trackResults.flat())).map(toStreamResult);
+        const final = sortByResolution(dedupeByUrl(trackResults.flat()));
+        dbg(`done: ${final.length} stream(s)`);
+        return final.map(toStreamResult);
     } catch (error) {
+        dbgWarn(`getStreams crashed: ${error && error.stack ? String(error.stack).split("\n").slice(0, 3).join(" | ") : error}`);
         return [];
     }
 }

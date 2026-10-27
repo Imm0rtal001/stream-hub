@@ -55,22 +55,25 @@ still has `"framework": null`, and that the Vercel dashboard's own Project
 Settings → Framework Preset is set to **Other** — a manually-set dashboard
 preset can override `vercel.json` for that project.
 
-## Links: generate a new one when settings change (v1.5.0)
+## Automatic saving (v1.6.0)
 
-Nothing saves by itself. On the **Install** tab your Stremio and Nuvio links carry
-the settings they were generated with (`/c/<encoded-config>/manifest.json`). After you
-change a setting the tab tells you the link is out of date; press **Generate new
-link**, copy it and install it. Old links keep working with their old settings.
+Connect an **Upstash Redis** store to the Vercel project (Storage tab, then Connect).
+After the next deploy, the first time you open the control centre it creates one
+permanent link (`/u/<id>/manifest.json`) and **every change you make is saved
+automatically** (about 0.7 s after you stop typing, and again when you close the tab).
+Install that link in Stremio/Nuvio once; provider on/off, provider settings, DNS and
+mirror changes are picked up with no reinstall. **Copy edit link** lets you edit the
+same profile from another device.
 
-Optional short link: with an Upstash Redis store connected on Vercel (or running
-locally, where `./data/profiles.json` is used), **Save as profile** gives one short
-`/u/<id>/manifest.json` link. It updates only when you press **Save changes**, and
-**Copy edit link** lets you edit the same profile from another device.
+Without a store (plain Vercel, no Redis) nothing can be saved on the server. The
+settings then live inside the link: the link on the Install tab regenerates by itself
+on every change and your browser remembers the settings, but Stremio keeps the old
+link, so reinstall after changing something.
 
 ## Control centre
 
-- **Install** — Stremio and Nuvio links, a **Generate new link** button, an
-  `stremio://` one-tap install button, and an optional manually saved short link.
+- **Install** — Stremio and Nuvio links, an
+  `stremio://` one-tap install button, and the automatically saved permanent link.
 - **Providers** — enable/disable each source, edit its own settings (the
   ones each provider already exposes, e.g. 4KHdHub's resolution/size
   limits), and set a mirror domain if a site moves.
@@ -167,6 +170,15 @@ the standard MD5 and HMAC-MD5 test vectors in `test/run.js`.
   Android's Private DNS to a DoH hostname if you need one.
 
 ## Changelog
+
+- **1.6.0**: automatic saving is back. With a Redis store the permanent profile link is created on first
+  visit and every change is saved by itself (debounced, flushed when the tab closes, with a
+  *Save now* button). Without a store the generated link follows your settings automatically.
+  MovieBox reworked: token retries and a second token host, fallback across API hosts (api3 to api6)
+  with an 8 s limit per call, tolerant search parsing, 720p on by default and low qualities returned
+  when nothing else exists, mobile MP4 links used as a fallback, MP4/HLS sorted ahead of DASH (Stremio
+  cannot play DASH; new toggle), and every stage logged to the Test tab (token, search matches with
+  scores, play-info counts, HTTP statuses with body snippets). All providers verified to load and return cleanly when their site is down.
 
 - **1.5.0**: auto-save removed. Links are generated on demand with **Generate new link**
   (with a notice when settings changed since the last link); optional short profile

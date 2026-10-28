@@ -272,6 +272,28 @@
       ]
     },
     {
+      "id": "hicine",
+      "name": "Hicine.",
+      "description": "Provider: UHDMovies | Movies & TV shows, 4K/UHD releases",
+      "version": "1.9.0",
+      "author": "Imm0rtal001",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/hicine.js",
+      "enabled": true,
+      "formats": [
+        "mkv",
+        "mp4"
+      ],
+      "logo": "https://hicine.com.in/wp-content/uploads/2025/12/Hicine.webp",
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
+    },
+    {
       "id": "uhdmovies",
       "name": "UHDMovies.",
       "description": "Provider: UHDMovies | Movies & TV shows, 4K/UHD releases",

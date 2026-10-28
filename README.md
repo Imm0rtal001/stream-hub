@@ -179,7 +179,9 @@ the standard MD5 and HMAC-MD5 test vectors in `test/run.js`.
   when nothing else exists, mobile MP4 links used as a fallback, MP4/HLS sorted ahead of DASH (Stremio
   cannot play DASH; new toggle), and every stage logged to the Test tab (token, search matches with
   scores, play-info counts, HTTP statuses with body snippets). All providers verified to load and return cleanly when their site is down.
-
+  Merged your changes (hicine provider, hdhub4u `new10` domain, uhdmovies domain and user agent). Hicine now logs every stage to
+  the Test tab, no longer searches the site by the numeric TMDB id when TMDB is down, and its streams are labelled Hicine
+  (they said VegaMovies); its manifest description said UHDMovies.
 - **1.5.0**: auto-save removed. Links are generated on demand with **Generate new link**
   (with a notice when settings changed since the last link); optional short profile
   link is saved only when you press **Save changes**.
@@ -202,6 +204,20 @@ the standard MD5 and HMAC-MD5 test vectors in `test/run.js`.
   saved on every change and on tab close), file-store fallback for local/self-host,
   edit link for other devices, no CDN caching of live manifests, `.env.example`.
 - **1.2.0**: control centre, DoH/DNS overrides, stream formatting.
+
+## Checking a provider with a real TMDB id
+
+```bash
+npm install
+npm run check -- moviebox 550              # movie (Fight Club)
+npm run check -- moviebox 1396 tv 1 1      # series (Breaking Bad S1E1)
+```
+
+It runs the provider exactly as the deployed addon does and prints the provider's debug log,
+every network request (host, HTTP status, time), the streams found, and whether the first
+stream link actually answers. The last line is `VERDICT: WORKING` or `NOT WORKING`. The same
+information is on the Test tab of the control centre for your deployed copy; run the check from
+your own machine and from the deployed Test tab to tell a provider fault from a Vercel-region block.
 
 ## Notes
 

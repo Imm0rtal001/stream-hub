@@ -9,7 +9,8 @@
   },
   "scripts": {
     "dev": "node dev-server.js",
-    "test": "node test/run.js && node test/ui-flow.js && node test/ui-flow.js nostore"
+    "test": "node test/run.js && node test/ui-flow.js && node test/ui-flow.js nostore",
+    "check": "node scripts/check-provider.js"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

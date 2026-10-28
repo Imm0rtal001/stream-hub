@@ -27,7 +27,7 @@
         "hi"
       ]
     },
-     {
+    {
       "id": "movielinkbd",
       "name": "Movielinkbd.",
       "description": "Provider: CineFreak | Bangla, English, Hindi • Nuvio TV / Fire TV compatible",
@@ -274,7 +274,7 @@
     {
       "id": "hicine",
       "name": "Hicine.",
-      "description": "Provider: UHDMovies | Movies & TV shows, 4K/UHD releases",
+      "description": "Provider: Hicine | Movies & TV shows, 1080p/4K releases",
       "version": "1.9.0",
       "author": "Imm0rtal001",
       "supportedTypes": [

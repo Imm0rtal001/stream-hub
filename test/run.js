@@ -316,6 +316,27 @@ async function t(name, fn) {
     }
   });
 
+  await t('hicine: search, match, resolve worker links; logs each stage; labels say Hicine', async () => {
+    const code = fs.readFileSync(path.join(realDir, 'hicine.js'), 'utf8');
+    const R = (status, body, extra = {}) => ({ ok: status === 200, status, url: extra.url || '', headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) });
+    const fetchFn = async (url) => {
+      url = String(url);
+      if (/themoviedb/.test(url)) return R(200, { title: 'Fight Club', release_date: '1999-10-15' });
+      if (/\/api\/search\//.test(url)) return R(200, { data: [{ record_id: 'r1', title: 'Fight Club (1999)', categories: 'hollywood, movies' }] });
+      if (/\/api\/hollywood_movies\/r1/.test(url)) return R(200, { links: 'Fight Club 1080p [2.1GB] https://w.test/?vcloud=abc' });
+      if (/\/api\/links/.test(url)) return R(200, { tokens: { fsl: { ts: '1', sig: 'x' } } });
+      return R(404, {});
+    };
+    const logs = [];
+    const api = loadProvider({ key: 'real:hicine', code, fetch: fetchFn, tmdbKey: 'K', logs });
+    const out = await api.getStreams('550', 'movie', null, null);
+    assert.equal(out.length, 1, logs.join(' | '));
+    assert.ok(/Hicine/.test(out[0].name) && !/VegaMovies/.test(out[0].name), 'label: ' + out[0].name);
+    for (const stage of [/start: tmdb 550/, /search "Fight Club": \d+ result/, /matched "Fight Club \(1999\)"/, /1 download link/, /done: 1 stream/]) {
+      assert.ok(logs.some((l) => stage.test(l)), `log for ${stage}: ` + logs.join(' | '));
+    }
+  });
+
   console.log('stream metadata (badges, server, language, audio/video codec)');
   const { parseStreamMeta } = require('../lib/streamMeta');
   await t('parses language/audio/codec/server out of a HubCloud-style release string', () => {

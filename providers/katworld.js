@@ -1,11 +1,11 @@
-const MOVIE_BASE = "https://new.katmoviehd.top";
+const MOVIE_BASE = "https://new2.katmoviehd.top";
 const TVSHW_BASE = "https://new.katdrama.my";
 const ANIME_BASE = "https://new.pikahd.co";
 const TMDB_API = "https://api.themoviedb.org/3";
 const TMDB_KEY = (typeof TMDB_API_KEY !== "undefined" && TMDB_API_KEY) || "307b7b8ef035c6aa336900aef4e203bd";
 const LNK_BASE = "https://links.kmhd.me";
 const HBC_BASE = "hubcloud.ist";
-const GDF_BASE = ["new5.gdflix.io", "new4.gdflix.io"];
+const GDF_BASE = ["new7.gdflix.io", "new5.gdflix.io"];
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
 
 function decodeEntities(s) {

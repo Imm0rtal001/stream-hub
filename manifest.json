@@ -1,6 +1,6 @@
 {
   "name": "StreamHub Providers",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Nuvio local scrapers, also served as a Stremio addon by StreamHub",
   "scrapers": [
     {
@@ -181,6 +181,27 @@
       "contentLanguage": [
         "en",
         "hi"
+      ]
+    },
+     {
+      "id": "katworld",
+      "name": "Katworld.",
+      "description": "Provider: katworld | Movies & TV shows, multi-lang audio with subtitles",
+      "version": "3.0.6",
+      "author": "Imm0rtal001",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/katworld.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en"
       ]
     },
     {

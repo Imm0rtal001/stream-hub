@@ -468,10 +468,10 @@ async function t(name, fn) {
       assert.equal((await call('PUT', `/api/profile/${id}`, { headers: { 'x-profile-secret': 'wrong' }, body: { config: {} } })).statusCode, 403);
     } finally { delete process.env.DATA_DIR; fs.rmSync(dir, { recursive: true, force: true }); }
   });
-  await t('version is 1.6.0 in package.json, manifest.json and /health', async () => {
-    assert.equal(require('../package.json').version, '1.6.0');
-    assert.equal(require('../manifest.json').version, '1.6.0');
-    assert.equal((await call('GET', '/health')).json.version, '1.6.0');
+  await t('version is 1.7.0 in package.json, manifest.json and /health', async () => {
+    assert.equal(require('../package.json').version, '1.7.0');
+    assert.equal(require('../manifest.json').version, '1.7.0');
+    assert.equal((await call('GET', '/health')).json.version, '1.7.0');
   });
   console.log('v1.4.1 built-in TMDB key');
   await t('built-in TMDB key is the default, env var wins, profiles never store it', async () => {
@@ -534,9 +534,9 @@ async function t(name, fn) {
     assert.equal(isPrivateIp('198.18.0.1'), true);
     assert.equal(isPrivateIp('198.20.0.1'), false);
   });
-  await t('version is 1.6.0 everywhere', async () => {
-    assert.equal(require('../package.json').version, '1.6.0');
-    assert.equal(require('../manifest.json').version, '1.6.0');
+  await t('version is 1.7.0 everywhere', async () => {
+    assert.equal(require('../package.json').version, '1.7.0');
+    assert.equal(require('../manifest.json').version, '1.7.0');
   });
   await t('bad config path returns 400, unknown route 404', async () => {
     assert.equal((await call('GET', '/c/!!!/manifest.json')).statusCode, 400);

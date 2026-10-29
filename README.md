@@ -171,6 +171,8 @@ the standard MD5 and HMAC-MD5 test vectors in `test/run.js`.
 
 ## Changelog
 
+- **1.7.0**: Katworld mirrors updated (movies host `new2.katmoviehd.top`, GDFlix host `new7.gdflix.io`, provider 3.0.7);
+  version aligned across `package.json`, `manifest.json` and the tests.
 - **1.6.0**: automatic saving is back. With a Redis store the permanent profile link is created on first
   visit and every change is saved by itself (debounced, flushed when the tab closes, with a
   *Save now* button). Without a store the generated link follows your settings automatically.

@@ -8,7 +8,9 @@ const dbg = (...a) => console.log("[hicine]", ...a);
 const dbgWarn = (...a) => console.warn("[hicine]", ...a);
 const shortUrl = (u) => String(u || "").replace(/^https?:\/\//, "").slice(0, 90);
 
+const MAX_1080P = 4;
 let count1080p = 0;
+const SERVER_NAMES = { fsl: "FSL", server1: "Server 1", fsl2: "FSL 2", pixel: "PixelDrain" };
 const streamMeta = new WeakMap();
 
 function getSortTag(rank) {
@@ -57,10 +59,10 @@ const fetchJson = async (url, opts = {}) => {
     }
 };
 
-function makeStream(title, url, quality, headers, fallbackQ = "HD") {
+function makeStream(title, url, quality, headers, fallbackQ = "HD", serverKey = "") {
     if (!url || !url.startsWith("https://")) return null;
     const nq = [quality, fallbackQ].find(q => ["2160p", "1440p", "1080p"].includes(q));
-    if (!nq || (nq === "1080p" && count1080p >= 4)) return null;
+    if (!nq || (nq === "1080p" && count1080p >= MAX_1080P)) return null;
 
     const t = (title || "").replace(/[\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
     const sizeM = t.match(/\[\s*(\d+(?:\.\d+)?\s*[MG]B)\s*\]/i);
@@ -86,7 +88,8 @@ function makeStream(title, url, quality, headers, fallbackQ = "HD") {
     if (nq === "1080p") count1080p++;
 
     const sortTag = getSortTag({ "2160p": 4, "1440p": 3, "1080p": 2 }[nq]);
-    const shortLabel = `Hicine • ${nq.toUpperCase()}${imax}${host ? " • " + host : ""}`;
+    const serverName = SERVER_NAMES[serverKey] || "";
+    const shortLabel = `Hicine • ${nq.toUpperCase()}${imax}${host ? " • " + host : ""}${serverName && serverName !== host ? " • " + serverName : ""}`;
     const detailLine1 = `${langs}${sizeStr ? " • " + sizeStr : ""}`;
     const detailLine2 = `${src} • ${audio}${range ? " • " + range : ""} • ${codec}`;
 
@@ -98,7 +101,7 @@ function makeStream(title, url, quality, headers, fallbackQ = "HD") {
         url,
         headers: headers || {}
     };
-    streamMeta.set(stream, { host: host || shortLabel, size: sizeStr ? sizeStr.replace(/\s+/g, "").toUpperCase() : "" });
+    streamMeta.set(stream, { host: (host || shortLabel) + "|" + (serverKey || ""), size: sizeStr ? sizeStr.replace(/\s+/g, "").toUpperCase() : "" });
     return stream;
 }
 
@@ -239,7 +242,7 @@ async function hiResolveWorker(workerUrl, quality, size, lang) {
             if (!direct) return null;
             finalUrl = direct;
         }
-        return { url: finalUrl, quality, size, lang };
+        return { url: finalUrl, quality, size, lang, server: k };
     }));
     return resolved.filter(Boolean);
 }
@@ -314,7 +317,7 @@ async function getHicineStreams(title, year, mediaType, season, episode) {
     dbg(`resolved ${raws.length} direct link(s) from ${targets.length} worker link(s)`);
     return dedupeBySize(raws.map(r => {
         const t = [hiLangLabel(r.lang), r.quality, r.size ? "[" + r.size + "]" : ""].filter(Boolean).join(" ");
-        return makeStream(t, r.url, r.quality, { "User-Agent": USER_AGENT }, "HD");
+        return makeStream(t, r.url, r.quality, { "User-Agent": USER_AGENT }, "HD", r.server);
     }).filter(Boolean));
 }
 
@@ -324,6 +327,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
         if (mediaType !== "tv" && mediaType !== "movie") return [];
         const isTv = mediaType === "tv";
         if (isTv && (season == null || episode == null)) { dbgWarn("series request without season/episode"); return []; }
+        count1080p = 0;
         dbg(`start: tmdb ${tmdbId} ${mediaType}${isTv ? ` S${season}E${episode}` : ""}`);
         const { title, year } = await getTMDBInfo(tmdbId, mediaType);
         const out = await getHicineStreams(title, year, mediaType, isTv ? Number(season) : null, isTv ? Number(episode) : null);

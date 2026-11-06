@@ -1,11 +1,12 @@
 const PROVIDER = 'MoviesHunt';
-const BASE_URL = 'https://.movieshunt.hair';
+const BASE_URL = 'https://movieshunt.hair';
 const TMDB_API = "https://api.themoviedb.org/3";
+const TMDB_KEY = (typeof TMDB_API_KEY !== "undefined" && TMDB_API_KEY) || "307b7b8ef035c6aa336900aef4e203bd";
 const ABHL_URL = 'https://abhilinks.site';
 const Q_KEEP = new Set(['1080P', '2160P']);
 const USER_AGENTS = [
-    'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36',
-    'Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Mobile Safari/537.36',
 ];
 
 function randomUA() {
@@ -54,10 +55,10 @@ async function fetchJson(url, options) {
 }
 
 async function getTMDBInfo(tmdbId, mediaType, ua) {
-    if (!TMDB_API_KEY) return null;
+    if (!TMDB_KEY) return null;
     const endpoint = mediaType === 'tv' ? 'tv' : 'movie';
     return fetchJson(
-        `${TMDB_API}/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=en-US`,
+        `${TMDB_API}/${endpoint}/${tmdbId}?api_key=${TMDB_KEY}&language=en-US`,
         { headers: { 'User-Agent': ua } }
     );
 }

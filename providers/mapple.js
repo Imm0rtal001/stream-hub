@@ -1,6 +1,6 @@
 const BASE_URL = "https://mapple.fun";
-const DSKTP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
-const MBILE_UA = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
+const DSKTP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
+const MBILE_UA = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
 const SERVERS = [
     { name: "Zeus", source: "mapple" },
     { name: "Prometheus", source: "s10" },
@@ -210,7 +210,7 @@ async function createSession(tmdbId, mediaType, tvSlug, referer) {
         jar.update(homeResponse);
         await homeResponse.text();
 
-        const tokenResponse = await fetch(`${BASE_URL}/api/request-token`, {
+        const tokenResponse = await fetch(`${BASE_URL}/api/ui/session`, {
             method: "POST",
             headers: buildApiHeaders(referer, true, jar.serialize()),
             body: ""

@@ -1,5 +1,5 @@
 const PROVIDER = 'MoviesHunt';
-const BASE_URL = 'https://new3.movieshunt.website';
+const BASE_URL = 'https://.movieshunt.hair';
 const TMDB_API = "https://api.themoviedb.org/3";
 const ABHL_URL = 'https://abhilinks.site';
 const Q_KEEP = new Set(['1080P', '2160P']);
@@ -199,7 +199,7 @@ function extractQualityOptions(html) {
         const size = match[2];
         if (quality === '480P') continue;
         const context = html.substring(Math.max(0, match.index - 200), match.index + 600);
-        const hubcloudMatch = context.match(/href="(https:\/\/hubcloud\.ist\/(?:drive|video)\/[^"]+)"/i);
+        const hubcloudMatch = context.match(/href="(https:\/\/hubcloud\.pw\/(?:drive|video)\/[^"]+)"/i);
         const vcloudMatch = context.match(/href="(https:\/\/href\.li\/\?https:\/\/vcloud\.fit\/[^"]+)"/i);
         if (hubcloudMatch) options.push({ quality, size, type: 'hubcloud', url: hubcloudMatch[1] });
         else if (vcloudMatch) options.push({ quality, size, type: 'vcloud', url: vcloudMatch[1] });
@@ -252,7 +252,7 @@ function extractEpisodes(html) {
         const end = i + 1 < markers.length ? markers[i + 1].idx : html.length;
         const segment = html.substring(start, end);
         const links = [];
-        const hubcloudRegex = /href="(https:\/\/hubcloud\.ist\/(?:drive|video)\/[^"]+)"/gi;
+        const hubcloudRegex = /href="(https:\/\/hubcloud\.pw\/(?:drive|video)\/[^"]+)"/gi;
         while ((match = hubcloudRegex.exec(segment)) !== null)
             links.push({ type: 'hubcloud', url: match[1] });
         const vcloudRegex = /href="(https:\/\/href\.li\/\?https:\/\/vcloud\.fit\/[^"]+)"/gi;

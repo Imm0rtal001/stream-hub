@@ -1,5 +1,6 @@
 const BASE_API = "https://api.hlowb.com";
 const TMDB_API = "https://api.themoviedb.org/3";
+const TMDB_KEY = (typeof TMDB_API_KEY !== "undefined" && TMDB_API_KEY) || "307b7b8ef035c6aa336900aef4e203bd";
 const PKG = "com.external.castle";
 const CHANNEL = "2";
 const CLIENT = "1";
@@ -74,7 +75,7 @@ async function apiFetch(url, options = {}) {
         headers: { ...API_HEADERS, ...(options.headers || {}) },
         body: options.body,
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status} from ${String(url).replace(/\?.*/, "")}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res;
 }
 
@@ -122,7 +123,7 @@ async function karnisRequest(url, options = {}) {
 
 async function getTMDBInfo(tmdbId, mediaType) {
     const endpoint = mediaType === "tv" ? "tv" : "movie";
-    const res = await fetch(`${TMDB_API}/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}`);
+    const res = await fetch(`${TMDB_API}/${endpoint}/${tmdbId}?api_key=${TMDB_KEY}`);
     const data = await res.json();
     const title = mediaType === "tv" ? data.name : data.title;
     const date = mediaType === "tv" ? data.first_air_date : data.release_date;
@@ -227,7 +228,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
         const searchTerm = tmdbInfo.year ? `${tmdbInfo.title} ${tmdbInfo.year}` : tmdbInfo.title;
         const searchResult = await searchKarnis(securityKey, searchTerm);
         const rows = extractData(searchResult).rows || [];
-        if (!rows.length) { console.warn("[castle] no search results for", searchTerm); return []; }
+        if (!rows.length) return [];
 
         const searchTitle = tmdbInfo.title.toLowerCase();
         const match = rows.find(item => {
@@ -255,7 +256,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
             ? (episodes.find(e => e.number === episode) ?? null)
             : (episodes[0] ?? null);
 
-        if (!episodeObj?.id) { console.warn("[castle] episode not found in movie", movieId); return []; }
+        if (!episodeObj?.id) return [];
         const episodeId = String(episodeObj.id);
 
         const tracks = (episodeObj.tracks || []).filter(t => isAllowedLang(t.languageName || t.abbreviate));
@@ -267,7 +268,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
                 try {
                     const streams = processVideoResponse(await fetchFn(res), null, QUALITY_MAP[String(res)]);
                     if (streams.length) { allStreams.push(...streams); return true; }
-                } catch (e) { console.warn("[castle] getVideo failed:", e && e.message); }
+                } catch (_) { }
             }
             return false;
         }
@@ -287,7 +288,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
                             QUALITY_MAP[String(res)]
                         );
                         if (streams.length) { allStreams.push(...streams); loaded = true; }
-                    } catch (e) { console.warn("[castle] getVideo failed:", e && e.message); }
+                    } catch (_) { }
                 }
             }
             if (!loaded) await tryResolutions(res => getVideo(securityKey, movieId, episodeId, res));
@@ -298,8 +299,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
             .sort((a, b) => getQualityValue(b.quality) - getQualityValue(a.quality))
             .filter(s => s.url && !seen.has(s.url) && seen.add(s.url));
 
-    } catch (e) {
-        console.warn("[castle] failed:", e && e.message);
+    } catch (_) {
         return [];
     }
 }

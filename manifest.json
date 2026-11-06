@@ -1,6 +1,6 @@
 {
   "name": "StreamHub Providers",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Nuvio local scrapers, also served as a Stremio addon by StreamHub",
   "scrapers": [
     {

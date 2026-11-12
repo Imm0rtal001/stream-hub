@@ -1,14 +1,16 @@
 const BASE_URL = "https://cinejoy.pk";
 const API_BASE = ["https://api.wing.st", "https://api.shegu.st"];
 const TMDB_API = "https://api.themoviedb.org/3";
-const HEADERS = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36" };
+const TMDB_KEY = (typeof TMDB_API_KEY !== "undefined" && TMDB_API_KEY) || "307b7b8ef035c6aa336900aef4e203bd";
+const HEADERS = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36" };
+const SERVERS = ["Nebula", "Secret"];
 
 async function fetchTmdbMediaDetails(tmdbId, mediaType) {
-  if (!TMDB_API_KEY) return null;
+  if (!TMDB_KEY) return null;
   try {
     const normalizedType = mediaType === "tv" ? "tv" : "movie";
     const response = await fetch(
-      `${TMDB_API}/${normalizedType}/${tmdbId}?api_key=${encodeURIComponent(TMDB_API_KEY)}&append_to_response=external_ids`,
+      `${TMDB_API}/${normalizedType}/${tmdbId}?api_key=${encodeURIComponent(TMDB_KEY)}&append_to_response=external_ids`,
       { headers: { "Accept": "application/json", "User-Agent": HEADERS["User-Agent"] } }
     );
     if (!response.ok) return null;
@@ -260,7 +262,7 @@ function extractHlsVariants(masterPlaylistText, masterPlaylistUrl) {
 
 function normalizeQualityLabel(rawValue) {
   const normalized = String(rawValue || "").toLowerCase();
-  if (normalized.includes("2160") || normalized.includes("4k")) return "4K";
+  if (normalized.includes("2160") || normalized.includes("4k")) return "2160p";
   if (normalized.includes("1080") || normalized.includes("fhd")) return "1080p";
   return "Auto";
 }
@@ -296,24 +298,32 @@ async function resolveStreamItems(rawItems, streamRequestHeaders) {
     .filter(item => item && typeof item === "object")
     .map(async item => {
       const subtitleTracks = normalizeSubtitleTracks(item.captions);
+      const streamName = `Cinejoy \u2022 ${item.sourceServer || SERVERS[0]}`;
+      const buildStream = (url, quality) => ({
+        name: streamName,
+        title: streamName,
+        url,
+        quality,
+        headers: streamRequestHeaders,
+        subtitles: subtitleTracks
+      });
       const resolvedStreams = [];
 
       if (item.type === "hls" && item.playlist) {
         try {
           const playlistResponse = await fetch(item.playlist, { headers: streamRequestHeaders });
           if (playlistResponse.ok) {
-            const variants = extractHlsVariants(await playlistResponse.text(), item.playlist);
-            for (const variant of variants) {
-              if (variant.height !== 2160 && variant.height !== 1080) continue;
-              const qualityBadge = variant.height === 2160 ? "4K" : "1080p";
-              resolvedStreams.push({
-                name: `Cinejoy \u2022 Nebula`,
-                title: `Cinejoy \u2022 Nebula`,
-                url: variant.url,
-                quality: qualityBadge,
-                headers: streamRequestHeaders,
-                subtitles: subtitleTracks
-              });
+            const masterPlaylistText = await playlistResponse.text();
+            const variants = extractHlsVariants(masterPlaylistText, item.playlist);
+            if (/#EXT-X-MEDIA\s*:\s*TYPE=AUDIO/i.test(masterPlaylistText)) {
+              const maxHeight = Math.max(0, ...variants.map(variant => variant.height));
+              const masterQuality = maxHeight >= 2160 ? "2160p" : maxHeight === 1080 ? "1080p" : maxHeight === 720 ? "720p" : undefined;
+              resolvedStreams.push(buildStream(item.playlist, masterQuality));
+            } else {
+              for (const variant of variants) {
+                if (variant.height !== 2160 && variant.height !== 1080) continue;
+                resolvedStreams.push(buildStream(variant.url, variant.height === 2160 ? "2160p" : "1080p"));
+              }
             }
           }
         } catch { }
@@ -321,15 +331,7 @@ async function resolveStreamItems(rawItems, streamRequestHeaders) {
         for (const qualityKey of Object.keys(item.qualities)) {
           const qualityUrl = item.qualities[qualityKey]?.url;
           if (!qualityUrl || !String(qualityUrl).startsWith("http") || !isHighValueQuality(qualityKey)) continue;
-          const qualityBadge = normalizeQualityLabel(qualityKey);
-          resolvedStreams.push({
-            name: `Cinejoy \u2022 Nebula`,
-            title: `Cinejoy \u2022 Nebula`,
-            url: qualityUrl,
-            quality: qualityBadge,
-            headers: streamRequestHeaders,
-            subtitles: subtitleTracks
-          });
+          resolvedStreams.push(buildStream(qualityUrl, normalizeQualityLabel(qualityKey)));
         }
       }
 
@@ -340,6 +342,26 @@ async function resolveStreamItems(rawItems, streamRequestHeaders) {
   return deduplicateAndCleanStreams(
     settledResults.flatMap(result => result.status === "fulfilled" ? result.value : [])
   );
+}
+
+function getResolutionWeight(quality) {
+  const normalizedQuality = String(quality || "").toUpperCase();
+  if (normalizedQuality === "2160P") return 2;
+  if (normalizedQuality === "1080P") return 1;
+  return 0;
+}
+
+function getInvertedSortTag(score, maxScore) {
+  maxScore = maxScore || 999999;
+  let val = Math.max(0, parseInt(score, 10) || 0);
+  let inv = Math.max(0, maxScore - val);
+  let bin = inv.toString(2);
+  while (bin.length < 20) bin = "0" + bin;
+  const chars = [];
+  for (let i = 0; i < bin.length; i++) {
+    chars.push(bin.charAt(i) === "1" ? "﻿" : "");
+  }
+  return chars.join("");
 }
 
 async function getStreams(tmdbId, mediaType, season, episode) {
@@ -356,46 +378,48 @@ async function getStreams(tmdbId, mediaType, season, episode) {
     )) return [];
 
     const tmdbDetails = await fetchTmdbMediaDetails(normalizedId, normalizedType);
-    const sealedSession = await createEncryptedSession({
-      server: "Nebula",
-      isTv: normalizedType === "tv",
-      tmdbId: normalizedId,
-      season: seasonNumber,
-      episode: episodeNumber,
-      title: tmdbDetails?.title || "",
-      year: tmdbDetails?.year || "",
-      imdbId: tmdbDetails?.imdbId || ""
-    });
-
-    const postRequestOptions = {
-      method: "POST",
-      body: sealedSession.body,
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Origin": BASE_URL,
-        "Referer": `${BASE_URL}/`,
-        "User-Agent": HEADERS["User-Agent"]
-      }
-    };
-
-    let apiResponse = null;
-    for (const endpoint of API_BASE) {
-      try {
-        apiResponse = await fetch(`${endpoint}/g`, postRequestOptions);
-        if (apiResponse.ok) break;
-      } catch { }
-    }
-    if (!apiResponse?.ok) return [];
-
-    const encryptedResponseBytes = new Uint8Array(await apiResponse.arrayBuffer());
-
-    const responseJson = JSON.parse(decryptSealedResponse(encryptedResponseBytes, sealedSession));
     const streamRequestHeaders = {
       "Origin": BASE_URL,
       "Referer": `${BASE_URL}/`,
       "User-Agent": HEADERS["User-Agent"]
     };
-    return resolveStreamItems(responseJson?.data?.stream || [], streamRequestHeaders);
+
+    const itemsByServer = await Promise.all(SERVERS.map(async serverName => {
+      try {
+        const sealedSession = await createEncryptedSession({
+          server: serverName,
+          isTv: normalizedType === "tv",
+          tmdbId: normalizedId,
+          season: seasonNumber,
+          episode: episodeNumber,
+          ...tmdbDetails
+        });
+        const requestOptions = {
+          method: "POST",
+          body: sealedSession.body,
+          headers: { ...streamRequestHeaders, "Content-Type": "application/octet-stream" }
+        };
+        for (const endpoint of API_BASE) {
+          try {
+            const apiResponse = await fetch(`${endpoint}/g`, requestOptions);
+            if (!apiResponse.ok) continue;
+            const encryptedBytes = new Uint8Array(await apiResponse.arrayBuffer());
+            const payload = JSON.parse(decryptSealedResponse(encryptedBytes, sealedSession));
+            return (payload?.data?.stream || [])
+              .filter(streamItem => streamItem && typeof streamItem === "object")
+              .map(streamItem => ({ ...streamItem, sourceServer: serverName }));
+          } catch { }
+        }
+      } catch { }
+      return [];
+    }));
+
+    const streams = await resolveStreamItems(itemsByServer.flat(), streamRequestHeaders);
+    streams.sort((a, b) => getResolutionWeight(b.quality) - getResolutionWeight(a.quality));
+    return streams.map((stream, index) => ({
+      ...stream,
+      name: getInvertedSortTag(streams.length - index, streams.length + 1) + stream.name
+    }));
   } catch {
     return [];
   }

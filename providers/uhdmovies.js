@@ -352,7 +352,8 @@ function extractVideoSeed(finallink) {
 function extractInstantLink(finallink) {
     console.log("[UHDMovies] InstantLink: " + finallink);
     var hostM = finallink.match(/^https?:\/\/([^\/]+)/);
-    var host = hostM ? hostM[1] : finallink.indexOf("video-leech") !== -1 ? "video-leech.pro" : "video-seed.dev";
+    var host = hostM ? hostM[1] : finallink.indexOf("video-leech") !== -1 ? "video-leech.dev
+        " : "video-seed.dev";
     var tokenParts = finallink.split("url=");
     if (tokenParts.length < 2)
         return Promise.resolve(null);

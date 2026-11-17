@@ -1,6 +1,6 @@
 {
   "name": "StreamHub Providers",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "Nuvio local scrapers, also served as a Stremio addon by StreamHub",
   "scrapers": [
     {
@@ -139,16 +139,16 @@
       ]
     },
     {
-      "id": "castle",
-      "name": "Castle.",
-      "description": "Provider: Castle | Movies & TV shows, English/Hindi/Bengali audio, 1080p",
+      "id": "play4u",
+      "name": "Play4u.",
+      "description": "Provider: play4u | Movies & TV shows, English/Hindi/Bengali audio, 1080p",
       "version": "1.0.0",
       "author": "Imm0rtal001",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/castle.js",
+      "filename": "providers/play4u.js",
       "enabled": true,
       "formats": [
         "mp4",
@@ -227,16 +227,16 @@
       ]
     },
     {
-      "id": "moviebox",
-      "name": "MovieBox.",
-      "description": "Provider: MovieBox | Movies & TV shows, multi-lang audio with subtitles",
+      "id": "vidnest",
+      "name": "Vidnest.",
+      "description": "Provider: vidnest | Movies & TV shows, multi-lang audio with subtitles",
       "version": "1.0.0",
       "author": "Imm0rtal001",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/moviebox.js",
+      "filename": "providers/vidnest.js",
       "enabled": true,
       "formats": [
         "mp4",

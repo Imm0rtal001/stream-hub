@@ -1,6 +1,6 @@
 "use strict";
 // src/uhdmovies/index.js
-var DOMAIN = "https://uhdmovies.beauty";
+var DOMAIN = "https://uhdmovies.ceo":
 var TMDB_API = "https://api.themoviedb.org/3";
 var TMDB_API_KEY = "1865f43a0549ca50d341dd9ab8b29f49";
 var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
@@ -325,7 +325,7 @@ function bypassHrefli(url) {
 function extractVideoSeed(finallink) {
     console.log("[UHDMovies] VideoSeed: " + finallink);
     var hostM = finallink.match(/^https?:\/\/([^\/]+)/);
-    var host = hostM ? hostM[1] : "video-seed.xyz";
+    var host = hostM ? hostM[1] : "video-seed.dev";
     var tokenParts = finallink.split("?url=");
     if (tokenParts.length < 2)
         return Promise.resolve(null);
@@ -352,7 +352,7 @@ function extractVideoSeed(finallink) {
 function extractInstantLink(finallink) {
     console.log("[UHDMovies] InstantLink: " + finallink);
     var hostM = finallink.match(/^https?:\/\/([^\/]+)/);
-    var host = hostM ? hostM[1] : finallink.indexOf("video-leech") !== -1 ? "video-leech.pro" : "video-seed.pro";
+    var host = hostM ? hostM[1] : finallink.indexOf("video-leech") !== -1 ? "video-leech.pro" : "video-seed.dev";
     var tokenParts = finallink.split("url=");
     if (tokenParts.length < 2)
         return Promise.resolve(null);

@@ -171,6 +171,9 @@ the standard MD5 and HMAC-MD5 test vectors in `test/run.js`.
 
 ## Changelog
 
+- **1.8.0**: maintenance release. Versions realigned (the manifest was already at 1.8.0 while `package.json`
+  and the tests said 1.7.1); added the missing `.env.example` and a `.gitignore`; fixed two syntax errors in `providers/uhdmovies.js`
+  (a `:` instead of `;` and a string split across lines) that stopped the provider from loading.
 - **1.7.1**: maintenance release. Version bumped and aligned across `package.json`, `manifest.json`,
   the `/health` endpoint and the tests; no provider or behaviour changes.
 - **1.7.0**: Katworld mirrors updated (movies host `new2.katmoviehd.top`, GDFlix host `new7.gdflix.io`, provider 3.0.7);

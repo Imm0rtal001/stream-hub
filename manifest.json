@@ -286,7 +286,7 @@
         "mkv",
         "mp4"
       ],
-      "logo": "",
+      "logo": "https://cdn.jsdelivr.net/gh/Zenda-Cross/vega-providers@main/assets/luxMovies.png",
       "contentLanguage": [
         "en",
         "hi"

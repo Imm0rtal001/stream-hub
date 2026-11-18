@@ -52,8 +52,8 @@
       "hasSettings": true
     },
     {
-      "id": "mapple",
-      "name": "Mapple.",
+      "id": "moviebox",
+      "name": "Moviebox.",
       "description": "Only works on Android TV • Nuvio TV / Fire TV compatible",
       "version": "1.0.1",
       "author": "Imm0rtal001",
@@ -61,7 +61,7 @@
         "movie",
         "tv"
       ],
-      "filename": "providers/mapple.js",
+      "filename": "providers/moviebox.js",
       "enabled": true,
       "formats": [
         "mp4",

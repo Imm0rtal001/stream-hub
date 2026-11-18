@@ -1,7 +1,7 @@
 "use strict";
 
 const PROVIDER = "Netmirror";
-const BASE_URL = "https://net27.cc";
+const BASE_URL = "https://net77.cc";
 const TMDB_API = "https://api.themoviedb.org/3";
 const TMDB_KEY = (typeof TMDB_API_KEY !== "undefined" && TMDB_API_KEY) || "307b7b8ef035c6aa336900aef4e203bd";
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36";

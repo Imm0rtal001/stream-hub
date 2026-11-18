@@ -205,16 +205,16 @@
       ]
     },
     {
-      "id": "netmirror",
-      "name": "Netmirror.",
-      "description": "Provider: Netmirror | Netflix, Prime Video & Hotstar catalogue mirror",
+      "id": "nxsha",
+      "name": "Nxsha.",
+      "description": "Provider: nxsha | Netflix, Prime Video & Hotstar catalogue mirror",
       "version": "1.0.0",
       "author": "Imm0rtal001",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/Netmirror.js",
+      "filename": "providers/nxsha.js",
       "enabled": true,
       "formats": [
         "m3u8",

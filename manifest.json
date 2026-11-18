@@ -43,7 +43,7 @@
         "mkv",
         "mp4"
       ],
-      "logo": "https://github.com/Zenda-Cross/vega-providers/blob/main/assets/movielinkdb.png",
+      "logo": "https://cdn.jsdelivr.net/gh/Zenda-Cross/vega-providers@main/assets/movielinkdb.png",
       "contentLanguage": [
         "bn",
         "hi",
@@ -68,7 +68,7 @@
         "mkv",
         "m3u8"
       ],
-      "logo": "https://i.postimg.cc/hGt3dV6Z/dhamermovies.png",
+      "logo": "https://i.postimg.cc/76kBmVtt/logo.jpg",
       "contentLanguage": [
         "en"
       ]
@@ -88,7 +88,7 @@
       "formats": [
         "m3u8"
       ],
-      "logo": "",
+      "logo": "https://i.postimg.cc/LsTfF36x/movieshunt-icon.png",
       "contentLanguage": [
         "en"
       ]
@@ -110,7 +110,7 @@
         "mkv",
         "m3u8"
       ],
-      "logo": "https://i.postimg.cc/bwDbhq9q/moviesdrive.png",
+      "logo": "https://cdn.jsdelivr.net/gh/Zenda-Cross/vega-providers@main/assets/drive.png",
       "contentLanguage": [
         "en",
         "hi"
@@ -132,7 +132,7 @@
         "mp4",
         "m3u8"
       ],
-      "logo": "https://github.com/Zenda-Cross/vega-providers/blob/main/assets/multi.png",
+      "logo": "https://cdn.jsdelivr.net/gh/Zenda-Cross/vega-providers@main/assets/multi.png",
       "contentLanguage": [
         "en",
         "hi"
@@ -154,7 +154,7 @@
         "mp4",
         "m3u8"
       ],
-      "logo": "",
+      "logo": "https://i.postimg.cc/mr8c5Zmf/play4u-mark.png",
       "contentLanguage": [
         "en",
         "hi",
@@ -177,7 +177,7 @@
         "mp4",
         "mkv"
       ],
-      "logo": "https://github.com/Zenda-Cross/vega-providers/blob/main/assets/hdhub4u.png",
+      "logo": "https://cdn.jsdelivr.net/gh/Zenda-Cross/vega-providers@main/assets/hdhub4u.png",
       "contentLanguage": [
         "en",
         "hi"
@@ -199,7 +199,7 @@
         "mp4",
         "m3u8"
       ],
-      "logo": "https://github.com/Zenda-Cross/vega-providers/blob/main/assets/katmovies.png",
+      "logo": "https://cdn.jsdelivr.net/gh/Zenda-Cross/vega-providers@main/assets/katmovies.png",
       "contentLanguage": [
         "en"
       ]
@@ -220,7 +220,7 @@
         "m3u8",
         "mp4"
       ],
-      "logo": "",
+      "logo": "https://i.postimg.cc/v86rc9Py/Logo.png",
       "contentLanguage": [
         "en",
         "hi"
@@ -330,7 +330,7 @@
         "mkv",
         "mp4"
       ],
-      "logo": "https://github.com/Zenda-Cross/vega-providers/blob/main/assets/uhd.webp",
+      "logo": "https://cdn.jsdelivr.net/gh/Zenda-Cross/vega-providers@main/assets/uhd.webp",
       "contentLanguage": [
         "en",
         "hi"
@@ -352,7 +352,7 @@
         "mkv",
         "mp4"
       ],
-      "logo": "https://github.com/Zenda-Cross/vega-providers/blob/main/assets/vega.png",
+      "logo": "https://cdn.jsdelivr.net/gh/Zenda-Cross/vega-providers@main/assets/vega.png",
       "contentLanguage": [
         "en",
         "hi"

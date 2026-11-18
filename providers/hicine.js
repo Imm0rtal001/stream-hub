@@ -1,248 +1,180 @@
-const API_BASE = "https://api.hicine.biz";
+const API_BASE = "https://api.hicine.sbs";
 const TMDB_API = "https://api.themoviedb.org/3";
 const TMDB_KEY = (typeof TMDB_API_KEY !== "undefined" && TMDB_API_KEY) || "307b7b8ef035c6aa336900aef4e203bd";
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
+const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
 
-const dbg = (...args) => console.log("[hicine]", ...args);
-const dbgWarn = (...args) => console.warn("[hicine]", ...args);
-const shortUrl = (url) => String(url || "").replace(/^https?:\/\//i, "").slice(0, 90);
+// Every stage logs here; StreamHub shows these lines on the Test tab (Provider logs).
+const dbg = (...a) => console.log("[hicine]", ...a);
+const dbgWarn = (...a) => console.warn("[hicine]", ...a);
+const shortUrl = (u) => String(u || "").replace(/^https?:\/\//, "").slice(0, 90);
 
 const MAX_1080P = 4;
+let count1080p = 0;
 const SERVER_NAMES = { fsl: "FSL", server1: "Server 1", fsl2: "FSL 2", pixel: "PixelDrain" };
 const streamMeta = new WeakMap();
 
 function getSortTag(rank) {
-    const inverse = 4 - Math.max(0, Math.min(4, rank));
-    return inverse.toString(2).padStart(20, "0")
-        .split("").map(bit => bit === "1" ? "\uFEFF" : "\u200B").join("");
+    const inv = 4 - Math.max(0, Math.min(4, rank));
+    let bin = inv.toString(2);
+    while (bin.length < 20) bin = "0" + bin;
+    return bin.split("").map(b => b === "1" ? "\uFEFF" : "\u200B").join("");
 }
 
 async function fetchSafe(url, opts = {}) {
-    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timeoutMs = Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : 15000;
-    const requestOptions = { ...opts };
-    delete requestOptions.timeoutMs;
-
     let timer;
     try {
-        const headers = {
-            "Accept": "text/html,application/xhtml+xml,application/json,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            ...(requestOptions.headers || {})
-        };
-        if (controller) requestOptions.signal = controller.signal;
-
-        const request = fetch(url, { ...requestOptions, headers });
-        const timeout = new Promise((_, reject) => {
-            timer = setTimeout(() => {
-                if (controller) controller.abort();
-                reject(new Error(`request timed out after ${timeoutMs}ms`));
-            }, timeoutMs);
+        const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(null), 15000); });
+        return await Promise.race([
+            fetch(url, {
+                ...opts,
+                headers: {
+                    "User-Agent": USER_AGENT,
+                    "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                    ...(opts.headers || {})
+                }
+            }),
+            timeout
+        ]).then((r) => {
+            if (r === null) dbgWarn(`timeout (15s) for ${shortUrl(url)}`);
+            return r;
         });
-
-        return await Promise.race([request, timeout]);
-    } catch (error) {
-        dbgWarn(`request failed for ${shortUrl(url)}: ${error && error.message ? error.message : error}`);
+    } catch (e) {
+        dbgWarn(`request failed for ${shortUrl(url)}: ${e && e.message ? e.message : e}`);
         return null;
     } finally {
-        if (timer) clearTimeout(timer);
+        clearTimeout(timer);
     }
 }
 
-async function fetchJson(url, opts = {}) {
-    const response = await fetchSafe(url, opts);
-    if (!response) return null;
-
-    if (!response.ok) {
-        dbgWarn(`HTTP ${response.status} for ${shortUrl(url)}`);
-        return null;
-    }
-
+const fetchJson = async (url, opts = {}) => {
     try {
-        return await response.json();
-    } catch (error) {
-        dbgWarn(`bad JSON from ${shortUrl(url)}: ${error && error.message ? error.message : error}`);
+        const r = await fetchSafe(url, opts);
+        if (!r) return null;
+        if (!r.ok) { dbgWarn(`HTTP ${r.status} for ${shortUrl(url)}`); return null; }
+        return await r.json();
+    } catch (e) {
+        dbgWarn(`bad JSON from ${shortUrl(url)}: ${e && e.message ? e.message : e}`);
         return null;
     }
-}
+};
 
-function makeStream(title, url, quality, headers, fallbackQuality = "HD", serverKey = "") {
-    if (typeof url !== "string" || !/^https:\/\/\S+$/i.test(url)) return null;
+function makeStream(title, url, quality, headers, fallbackQ = "HD", serverKey = "") {
+    if (!url || !url.startsWith("https://")) return null;
+    const nq = [quality, fallbackQ].find(q => ["2160p", "1440p", "1080p"].includes(q));
+    if (!nq || (nq === "1080p" && count1080p >= MAX_1080P)) return null;
 
-    const normalizedQuality = [quality, fallbackQuality]
-        .find(value => ["2160p", "1440p", "1080p"].includes(String(value || "").toLowerCase()));
-    if (!normalizedQuality) return null;
-
-    const text = String(title || "").replace(/[\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
-    const sizeMatch = text.match(/\[\s*(\d+(?:\.\d+)?\s*[MG]B)\s*\]/i);
-    const size = sizeMatch ? sizeMatch[1].trim() : null;
-    const source = /bluray|blu-ray|bdrip/i.test(text) ? "Blu-ray" :
-        /hdrip|webrip/i.test(text) ? "WEBRip" : "WEB-DL";
-    const imax = /imax/i.test(text) ? " • IMAX" : "";
-    const dynamicRange = /dolby\s*vision|dovi/i.test(text) ? "Dolby Vision" :
-        /hdr10/i.test(text) ? "HDR10" : /hdr/i.test(text) ? "HDR" :
-        /10bit|10-bit/i.test(text) ? "10-Bit" : /sdr/i.test(text) ? "SDR" : "";
-    const codec = /hevc|x265|h265/i.test(text) ? "H.265" : "H.264";
+    const t = (title || "").replace(/[\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
+    const sizeM = t.match(/\[\s*(\d+(?:\.\d+)?\s*[MG]B)\s*\]/i);
+    const sizeStr = sizeM ? sizeM[1].trim() : null;
+    const src = /bluray|blu\-ray|bdrip/i.test(t) ? "Blu-ray" : /hdrip|webrip/i.test(t) ? "WEBRip" : "WEB-DL";
+    const imax = /imax/i.test(t) ? " • IMAX" : "";
+    const range = /dolby\s*vision|dovi/i.test(t) ? "Dolby Vision" : /hdr10/i.test(t) ? "HDR10" : /hdr/i.test(t) ? "HDR" : /10bit|10\-bit/i.test(t) ? "10-Bit" : /sdr/i.test(t) ? "SDR" : "";
+    const codec = /hevc|x265|h265/i.test(t) ? "H.265" : "H.264";
 
     let audio = "AAC";
-    const audioMatch = text.match(/(TrueHD\s*7\.1|DDP\s*7\.1|DDP\s*5\.1|DD\s*5\.1|5\.1|AAC)/i);
-    if (audioMatch) {
-        audio = audioMatch[1].toUpperCase().replace(/\s+/g, "");
+    const am = t.match(/(TrueHD\s*7\.1|DDP\s*7\.1|DDP\s*5\.1|DD\s*5\.1|5\.1|AAC)/i);
+    if (am) {
+        audio = am[1].toUpperCase().replace(/\s+/g, "");
         if (audio === "5.1") audio = "DDP5.1";
         if (audio.includes("TRUEHD")) audio = "TrueHD 7.1";
-    } else if (/dolby\s*digital|\bdd\b/i.test(text)) {
-        audio = "Dolby Digital";
-    }
-    if (/atmos/i.test(text)) audio += " • Atmos";
+    } else if (/dolby\s*digital|dd/i.test(t)) audio = "Dolby Digital";
+    if (/atmos/i.test(t)) audio += " • Atmos";
 
-    const languages = /dual|hindi-eng|eng-hin/i.test(text) ? "English • Hindi" :
-        ([/english|eng/i.test(text) && "English", /hindi|hin/i.test(text) && "Hindi"]
-            .filter(Boolean).join(" • ") || "English");
+    const langs = /dual|hindi\-eng|eng\-hin/i.test(t) ? "English • Hindi" : ([/english|eng/i.test(t) && "English", /hindi|hin/i.test(t) && "Hindi"].filter(Boolean).join(" • ") || "English");
+    const lUrl = url.toLowerCase();
+    const host = (lUrl.includes("hubcloud") || lUrl.includes("/hub2/") || lUrl.includes("homelander.buzz") || lUrl.includes("whistle.lat") || lUrl.includes("mandalorian.buzz")) ? "HubCloud" : (lUrl.includes(".r2.dev") || lUrl.includes("vcloud")) ? "vCloud" : lUrl.includes("pixeldrain") ? "PixelDrain" : "";
 
-    const lowerUrl = url.toLowerCase();
-    const host = (lowerUrl.includes("hubcloud") || lowerUrl.includes("/hub2/") ||
-        lowerUrl.includes("homelander.buzz") || lowerUrl.includes("whistle.lat") ||
-        lowerUrl.includes("mandalorian.buzz")) ? "HubCloud" :
-        (lowerUrl.includes(".r2.dev") || lowerUrl.includes("vcloud")) ? "vCloud" :
-        lowerUrl.includes("pixeldrain") ? "PixelDrain" : "";
+    if (nq === "1080p") count1080p++;
 
-    const sortRank = { "2160p": 4, "1440p": 3, "1080p": 2 }[normalizedQuality];
-    const sortTag = getSortTag(sortRank);
+    const sortTag = getSortTag({ "2160p": 4, "1440p": 3, "1080p": 2 }[nq]);
     const serverName = SERVER_NAMES[serverKey] || "";
-    const shortLabel = `Hicine • ${normalizedQuality.toUpperCase()}${imax}${host ? " • " + host : ""}${serverName && serverName !== host ? " • " + serverName : ""}`;
-    const detailLine1 = `${languages}${size ? " • " + size : ""}`;
-    const detailLine2 = `${source} • ${audio}${dynamicRange ? " • " + dynamicRange : ""} • ${codec}`;
+    const shortLabel = `Hicine • ${nq.toUpperCase()}${imax}${host ? " • " + host : ""}${serverName && serverName !== host ? " • " + serverName : ""}`;
+    const detailLine1 = `${langs}${sizeStr ? " • " + sizeStr : ""}`;
+    const detailLine2 = `${src} • ${audio}${range ? " • " + range : ""} • ${codec}`;
 
     const stream = {
         name: sortTag + shortLabel,
         title: sortTag + shortLabel,
-        quality: `${normalizedQuality} • ${detailLine1}\n${detailLine2}`,
-        language: languages,
+        quality: nq + " \u2022 " + detailLine1 + "\n" + detailLine2,
+        language: langs,
         url,
         headers: headers || {}
     };
-
-    streamMeta.set(stream, {
-        host: `${host || shortLabel}|${serverKey || ""}`,
-        size: size ? size.replace(/\s+/g, "").toUpperCase() : ""
-    });
+    streamMeta.set(stream, { host: (host || shortLabel) + "|" + (serverKey || ""), size: sizeStr ? sizeStr.replace(/\s+/g, "").toUpperCase() : "" });
     return stream;
 }
 
-function dedupeBySize(streams) {
+const dedupeBySize = streams => {
     const seen = new Set();
-    return (streams || []).filter(stream => {
-        const metadata = stream && streamMeta.get(stream);
-        if (!metadata || !metadata.size) return true;
-        const key = `${metadata.host}|${metadata.size}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
+    return (streams || []).filter(x => {
+        const m = x && streamMeta.get(x);
+        if (!m || !m.size) return true;
+        const k = m.host + "|" + m.size;
+        if (seen.has(k)) return false;
+        seen.add(k);
         return true;
     });
-}
+};
 
-function dedupe(streams) {
-    const seen = new Set();
-    return (streams || []).filter(stream => {
-        if (!stream || !stream.url || seen.has(stream.url)) return false;
-        seen.add(stream.url);
-        return true;
-    });
-}
+const dedupe = streams => { const s = new Set(); return (streams || []).filter(x => x && x.url && !s.has(x.url) && s.add(x.url)); };
 
 async function getTMDBInfo(tmdbId, mediaType) {
-    const type = mediaType === "tv" ? "tv" : "movie";
-    const data = await fetchJson(
-        `${TMDB_API}/${type}/${encodeURIComponent(tmdbId)}?api_key=${encodeURIComponent(TMDB_KEY)}`
-    );
-
-    if (!data) {
-        dbgWarn("TMDB lookup failed; cannot search Hicine without a title");
-        return { title: "", year: null };
+    const t = mediaType === "tv" ? "tv" : "movie";
+    const d = await fetchJson(`${TMDB_API}/${t}/${tmdbId}?api_key=${TMDB_KEY}`);
+    if (d) {
+        return {
+            title: t === "tv" ? d.name : d.title,
+            year: (d.first_air_date || d.release_date || "").split("-")[0]
+        };
     }
-
-    return {
-        title: type === "tv" ? data.name : data.title,
-        year: (data.first_air_date || data.release_date || "").split("-")[0] || null
-    };
+    dbgWarn("TMDB lookup failed; cannot search the site without a title");
+    return { title: "", year: null };
 }
 
-const hiFetchJson = url => fetchJson(url, {
-    headers: { "Accept": "application/json, text/plain, */*" }
-});
+const hiFetchJson = url => fetchJson(url, { headers: { "User-Agent": USER_AGENT, "Accept": "application/json, text/plain, */*" } });
 
-function hiQuality(value) {
-    const text = String(value || "");
-    const match = text.match(/\b(2160p|1440p|1080p|720p|480p|360p)\b/i) || text.match(/\b4k\b/i);
-    if (!match) return "";
-    const quality = match[1] ? match[1].toLowerCase() : "4k";
-    return quality === "4k" ? "2160p" : quality;
-}
-
-const hiAllowedQ = quality => quality === "2160p" || quality === "1080p";
-
-function hiSize(value) {
-    const match = String(value || "").match(/([\d.]+)\s*(GB|MB)/i);
-    return match ? `${match[1]}${match[2].toUpperCase()}` : "";
-}
-
-function hiLang(value) {
-    const text = String(value || "").toLowerCase();
-    return ["hindi", "punjabi", "urdu", "tamil", "telugu", "marathi", "kannada",
-        "malayalam", "bengali", "gujarati", "english", "korean", "japanese",
-        "chinese", "spanish", "arabic"].filter(language => text.includes(language)).join("-");
-}
-
-const hiLangLabel = language => language ?
-    language.split("-").map(part => part.charAt(0).toUpperCase() + part.slice(1)).join("-") : "";
-
-const hiLangTier = language => !language ? 3 :
-    language.includes("hindi") ? 0 :
-    (language.includes("punjabi") || language.includes("urdu")) ? 1 :
-    language.includes("english") ? 4 : 2;
+const hiQuality = text => {
+    const m = String(text || "").match(/\b(2160p|1440p|1080p|720p|480p|360p)\b/i) || String(text || "").match(/\b4k\b/i);
+    if (!m) return "";
+    const q = m[1] ? m[1].toLowerCase() : "4k";
+    return q === "4k" ? "2160p" : q;
+};
+const hiAllowedQ = q => q === "2160p" || q === "1080p";
+const hiSize = text => { const m = String(text || "").match(/([\d.]+)\s*(GB|MB)/i); return m ? m[1] + m[2].toUpperCase() : ""; };
+const hiLang = text => {
+    const s = String(text || "").toLowerCase();
+    return ["hindi", "punjabi", "urdu", "tamil", "telugu", "marathi", "kannada", "malayalam", "bengali", "gujarati", "english", "korean", "japanese", "chinese", "spanish", "arabic"].filter(l => s.includes(l)).join("-");
+};
+const hiLangLabel = lang => lang ? lang.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("-") : "";
+const hiLangTier = lang => !lang ? 3 : lang.includes("hindi") ? 0 : (lang.includes("punjabi") || lang.includes("urdu")) ? 1 : lang.includes("english") ? 4 : 2;
 
 function hiQueryParam(url, key) {
-    try {
-        return new URL(url).searchParams.get(key);
-    } catch (_) {
-        const queryIndex = String(url).indexOf("?");
-        if (queryIndex < 0) return null;
-        for (const pair of String(url).slice(queryIndex + 1).split("&")) {
-            const parts = pair.split("=");
-            try {
-                if (decodeURIComponent(parts[0]) === key) return decodeURIComponent(parts.slice(1).join("="));
-            } catch (_) {
-                return null;
-            }
-        }
-        return null;
+    const qi = url.indexOf("?");
+    if (qi < 0) return null;
+    for (const pair of url.slice(qi + 1).split("&")) {
+        const kv = pair.split("=");
+        if (decodeURIComponent(kv[0]) === key) return decodeURIComponent(kv.slice(1).join("="));
     }
+    return null;
 }
 
 async function hiSearch(query) {
-    const normalize = value => String(value || "").toLowerCase()
-        .replace(/&/g, "and").replace(/[^a-z0-9]+/g, "");
-    const words = String(query || "").toLowerCase().split(/[^a-z0-9]+/i).filter(word => word.length > 1);
-
-    const fetchQuery = async term => {
-        const data = await hiFetchJson(`${API_BASE}/api/search/${encodeURIComponent(term)}`);
-        return data && Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
+    const norm = t => String(t || "").toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "");
+    const words = query.toLowerCase().split(/[^a-z0-9]+/i).filter(w => w.length > 1);
+    const fetchQ = async t => {
+        const d = await hiFetchJson(`${API_BASE}/api/search/${encodeURIComponent(t)}`);
+        return (d && Array.isArray(d.data)) ? d.data : (Array.isArray(d) ? d : []);
     };
-
-    const items = await fetchQuery(query);
+    const items = await fetchQ(query);
     if (items.length < 3 && words.length > 1) {
         const variants = [words.join("-"), words.join(" ")];
-        words.slice().sort((a, b) => b.length - a.length).slice(0, 2)
-            .forEach(word => { if (word.length > 2) variants.push(word); });
-
-        const uniqueVariants = [...new Set(variants)].filter(variant => variant !== query);
-        const extraResults = await Promise.all(uniqueVariants.map(fetchQuery));
-
-        for (const list of extraResults) {
-            for (const record of list) {
-                const recordTitle = normalize(record && (record.title || record.name));
-                if (words.every(word => recordTitle.includes(normalize(word)))) items.push(record);
-            }
+        words.slice().sort((a, b) => b.length - a.length).slice(0, 2).forEach(w => { if (w.length > 2) variants.push(w); });
+        const unique = variants.filter((v, i, a) => v !== query && a.indexOf(v) === i);
+        const extra = await Promise.all(unique.map(fetchQ));
+        for (const list of extra) for (const rec of list) {
+            const t = norm(rec && (rec.title || rec.name));
+            if (words.every(w => t.includes(norm(w)))) items.push(rec);
         }
     }
     return items;
@@ -250,261 +182,159 @@ async function hiSearch(query) {
 
 async function hiFindId(title, year, mediaType) {
     if (!title) return null;
-
     const results = await hiSearch(title);
     dbg(`search "${title}": ${results.length} result(s)`);
-
     const wantSeries = mediaType === "tv";
-    const normalize = value => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
-    const normalizedTitle = normalize(title);
-
-    for (const record of results) {
-        if (!record || record.record_id == null) continue;
-
-        const recordTitle = normalize(record.title || record.name || "");
-        if (!recordTitle || (recordTitle !== normalizedTitle &&
-            !recordTitle.includes(normalizedTitle) && !normalizedTitle.includes(recordTitle))) continue;
-
-        const categories = String(record.categories || "").toLowerCase();
-        const recordIsMovie = !categories.includes("series") && !categories.includes("anime");
-        if (!wantSeries && !recordIsMovie) continue;
-        if (wantSeries && recordIsMovie) continue;
-
-        const recordYear = (String(record.title || "").match(/\((19\d{2}|20\d{2})\)/) || [])[1] ||
-            String(record.date || "").slice(0, 4);
-
-        if (year && recordYear && /^\d{4}$/.test(recordYear) &&
-            Math.abs(Number(recordYear) - Number(year)) > 1) continue;
-
-        dbg(`matched "${record.title || record.name}" id ${record.record_id} (${record.categories || "no categories"})`);
-        return { id: record.record_id, categories: record.categories || "" };
+    const normalize = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const normTitle = normalize(title);
+    for (const rec of results) {
+        if (!rec || !rec.record_id) continue;
+        const recTitle = normalize(rec.title || rec.name || "");
+        if (recTitle !== normTitle && !recTitle.includes(normTitle) && !normTitle.includes(recTitle)) continue;
+        const cats = String(rec.categories || "").toLowerCase();
+        const recIsMovie = !cats.includes("series") && !cats.includes("anime");
+        if (!wantSeries && !recIsMovie) continue;
+        if (wantSeries && recIsMovie) continue;
+        const recYear = (String(rec.title || "").match(/\((19\d{2}|20\d{2})\)/) || [])[1] || String(rec.date || "").slice(0, 4);
+        if (year && recYear && Math.abs(parseInt(recYear) - parseInt(year)) > 1) continue;
+        dbg(`matched "${rec.title || rec.name}" id ${rec.record_id} (${rec.categories || "no categories"})`);
+        return { id: rec.record_id, categories: rec.categories || "" };
     }
-
-    dbgWarn(`no result matched "${title}" (${year || "no year"}, ${mediaType}); check whether the Hicine API has changed`);
+    dbgWarn(`no result matched "${title}" (${year || "no year"}, ${mediaType}); the API at ${shortUrl(API_BASE)} may have moved or changed`);
     return null;
 }
 
 function hiCollection(categories, mediaType) {
-    const value = String(categories || "").toLowerCase();
-    if (value.includes("bollywood") && value.includes("series")) return "bollywood_series";
-    if (value.includes("bollywood")) return "bollywood_movies";
-    if (value.includes("anime")) return "anime";
+    const cats = String(categories || "").toLowerCase();
+    if (cats.includes("bollywood") && cats.includes("series")) return "bollywood_series";
+    if (cats.includes("bollywood")) return "bollywood_movies";
+    if (cats.includes("anime")) return "anime";
     return mediaType === "tv" ? "hollywood_series" : "hollywood_movies";
 }
 
 async function hiPixelDirect(goUrl) {
-    const response = await fetchSafe(goUrl, { headers: { Range: "bytes=0-0" } });
-    if (!response) return null;
-
-    const finalUrl = response.url || "";
-    const match = finalUrl.match(/^https?:\/\/(pixeldrain\.[a-z]+)\/(?:u|api\/file)\/([A-Za-z0-9]+)/i);
-    return match ? `https://${match[1]}/api/file/${match[2]}` : null;
+    try {
+        const r = await fetchSafe(goUrl, { headers: { "User-Agent": USER_AGENT, "Range": "bytes=0-0" } });
+        if (!r) return null;
+        const m = (r.url || "").match(/^https?:\/\/(pixeldrain\.[a-z]+)\/(?:u|api\/file)\/([A-Za-z0-9]+)/);
+        return m ? `https://${m[1]}/api/file/${m[2]}` : null;
+    } catch (e) { return null; }
 }
 
-async function hiResolveWorker(workerUrl, quality, size, language) {
-    let parsed;
-    try {
-        parsed = new URL(workerUrl);
-    } catch (_) {
-        dbgWarn(`invalid worker URL: ${shortUrl(workerUrl)}`);
-        return [];
-    }
-
-    const base = workerUrl.slice(0, workerUrl.indexOf("?")).replace(/\/+$/, "");
-    const vcloud = parsed.searchParams.get("vcloud");
-    if (!vcloud) {
-        dbgWarn(`link has no vcloud parameter: ${shortUrl(workerUrl)}`);
-        return [];
-    }
-
+async function hiResolveWorker(workerUrl, quality, size, lang) {
+    const qi = workerUrl.indexOf("?");
+    if (qi < 0) return [];
+    const base = workerUrl.slice(0, qi).replace(/\/+$/, "");
+    const vcloud = hiQueryParam(workerUrl, "vcloud");
+    if (!vcloud) { dbgWarn(`link has no vcloud parameter: ${shortUrl(workerUrl)}`); return []; }
     const data = await hiFetchJson(`${base}/api/links?vcloud=${encodeURIComponent(vcloud)}`);
     const tokens = data && data.tokens;
-    if (!tokens || typeof tokens !== "object" || !Object.keys(tokens).length) {
-        dbgWarn(`worker ${shortUrl(base)} returned no download tokens`);
-        return [];
-    }
+    if (!tokens || !Object.keys(tokens).length) { dbgWarn(`worker ${shortUrl(base)} returned no download tokens`); return []; }
 
     const order = ["fsl", "server1", "fsl2", "pixel"];
-    const keys = Object.keys(tokens).filter(key => order.includes(key))
-        .sort((a, b) => order.indexOf(a) - order.indexOf(b));
-
-    const resolved = await Promise.all(keys.map(async key => {
-        const token = tokens[key] || {};
-        if (!token.ts || !token.sig) return null;
-
-        let finalUrl = `${base}/go?type=${encodeURIComponent(key)}&vcloud=${encodeURIComponent(vcloud)}&ts=${encodeURIComponent(token.ts)}&sig=${encodeURIComponent(token.sig)}`;
-        if (key === "pixel") {
-            finalUrl = await hiPixelDirect(finalUrl);
-            if (!finalUrl) {
-                dbgWarn("PixelDrain redirect could not be resolved");
-                return null;
-            }
+    const keys = Object.keys(tokens).filter(k => order.includes(k)).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    const resolved = await Promise.all(keys.map(async k => {
+        const tk = tokens[k] || {};
+        if (!tk.ts || !tk.sig) return null;
+        let finalUrl = `${base}/go?type=${encodeURIComponent(k)}&vcloud=${encodeURIComponent(vcloud)}&ts=${encodeURIComponent(tk.ts)}&sig=${encodeURIComponent(tk.sig)}`;
+        if (k === "pixel") {
+            const direct = await hiPixelDirect(finalUrl);
+            if (!direct) return null;
+            finalUrl = direct;
         }
-        return { url: finalUrl, quality, size, lang: language, server: key };
+        return { url: finalUrl, quality, size, lang, server: k };
     }));
-
     return resolved.filter(Boolean);
 }
 
-const hiResolveSafe = (url, quality, size, language) =>
-    hiResolveWorker(url, quality, size, language).catch(error => {
-        dbgWarn(`worker failed: ${error && error.message ? error.message : error}`);
-        return [];
-    });
+const hiResolveSafe = (u, q, s, l) => hiResolveWorker(u, q, s, l).catch((e) => { dbgWarn(`worker failed: ${e && e.message ? e.message : e}`); return []; });
 
 function hiParseMovieLinks(field) {
-    const output = [];
+    const out = [];
     String(field || "").split(/\r?\n/).forEach(line => {
-        const match = line.match(/https?:\/\/[^\s,]+/i);
-        if (!match) return;
-
-        const quality = hiQuality(line) || "auto";
-        if (quality !== "auto" && !hiAllowedQ(quality)) return;
-        output.push({ workerUrl: match[0], quality, size: hiSize(line), lang: hiLang(line) });
+        const m = line.match(/https?:\/\/[^\s,]+/);
+        if (!m) return;
+        const q = hiQuality(line) || "auto";
+        if (q !== "auto" && !hiAllowedQ(q)) return;
+        out.push({ workerUrl: m[0], quality: q, size: hiSize(line), lang: hiLang(line) });
     });
-    return output;
+    return out;
 }
 
 function hiParseEpisodes(seasonText) {
-    const output = [];
-    const decoded = String(seasonText || "")
-        .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-        .replace(/&quot;/g, "\"").replace(/&#0?39;/g, "'").replace(/&nbsp;/g, " ");
-
+    const out = [];
+    const decoded = String(seasonText || "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#0?39;/g, "'").replace(/&nbsp;/g, " ");
     decoded.split(/\r?\n/).forEach(line => {
-        const match = line.match(/episode\s*(\d+)\s*[:\-]?\s*(.*)/i);
-        if (!match) return;
-
-        const rest = match[2] || "";
-        const variants = [];
-        const expression = /(https?:\/\/[^\s,]+?)\s*,\s*,?\s*([^:]*?)(?=\s*:|$)/gi;
+        const m = line.match(/episode\s*(\d+)\s*[:\-]?\s*(.*)/i);
+        if (!m) return;
+        const rest = m[2] || "", variants = [];
+        const re = /(https?:\/\/[^\s,]+?)\s*,\s*,?\s*([^:]*?)(?=\s*:|$)/g;
         let hit;
-
-        while ((hit = expression.exec(rest)) !== null) {
-            const label = hit[2].trim();
-            const quality = hiQuality(label) || label || "auto";
-            if (quality !== "auto" && !hiAllowedQ(quality)) continue;
-            variants.push({ url: hit[1], quality });
+        while ((hit = re.exec(rest)) !== null) {
+            const label = hit[2].trim(), q = hiQuality(label) || label || "auto";
+            if (q !== "auto" && !hiAllowedQ(q)) continue;
+            variants.push({ url: hit[1], quality: q });
         }
-
-        if (!variants.length) {
-            (rest.match(/https?:\/\/[^\s,]+/gi) || [])
-                .forEach(url => variants.push({ url, quality: "auto" }));
-        }
-        if (variants.length) output.push({ num: Number(match[1]), variants });
+        if (!variants.length) (rest.match(/https?:\/\/[^\s,]+/g) || []).forEach(u => variants.push({ url: u, quality: "auto" }));
+        if (variants.length) out.push({ num: parseInt(m[1], 10), variants });
     });
-    return output;
+    return out;
 }
 
 async function getHicineStreams(title, year, mediaType, season, episode) {
     const match = await hiFindId(title, year, mediaType);
     if (!match) return [];
-
-    const details = await hiFetchJson(
-        `${API_BASE}/api/${hiCollection(match.categories, mediaType)}/${encodeURIComponent(match.id)}`
-    );
-    if (!details || details.error) {
-        dbgWarn(`detail ${match.id} unavailable${details && details.error ? ": " + details.error : ""}`);
-        return [];
-    }
+    const det = await hiFetchJson(`${API_BASE}/api/${hiCollection(match.categories, mediaType)}/${match.id}`);
+    if (!det || det.error) { dbgWarn(`detail ${match.id} unavailable${det && det.error ? ": " + det.error : ""}`); return []; }
 
     const targets = [];
     if (mediaType === "tv") {
-        const seasonText = details[`season_${season}`] || "";
-        const selectedEpisode = hiParseEpisodes(seasonText).find(item => item.num === Number(episode));
-        if (!selectedEpisode) {
-            dbgWarn(`season ${season} episode ${episode} not listed (season text ${seasonText ? "present" : "missing"})`);
-            return [];
-        }
-
-        const seasonLanguage = hiLang((seasonText.split(/\r?\n/)[0]) || "");
-        selectedEpisode.variants.forEach(variant => targets.push({
-            workerUrl: variant.url, quality: variant.quality, size: "", lang: seasonLanguage
-        }));
+        const seasonText = det["season_" + season] || "";
+        const ep = hiParseEpisodes(seasonText).find(e => e.num === Number(episode));
+        if (!ep) { dbgWarn(`season ${season} episode ${episode} not listed (season text ${seasonText ? "present" : "missing"})`); return []; }
+        const seasonLang = hiLang((seasonText.split(/\r?\n/)[0]) || "");
+        ep.variants.forEach(v => targets.push({ workerUrl: v.url, quality: v.quality, size: "", lang: seasonLang }));
     } else {
-        hiParseMovieLinks(details.links).forEach(link => targets.push(link));
+        hiParseMovieLinks(det.links).forEach(l => targets.push(l));
     }
+    dbg(`${targets.length} download link(s): ${targets.map((t) => t.quality).join(", ")}`);
+    if (!targets.length) { dbgWarn("no 1080p/2160p links on this title"); return []; }
 
-    dbg(`${targets.length} download link(s): ${targets.map(target => target.quality).join(", ")}`);
-    if (!targets.length) {
-        dbgWarn("no eligible 1080p/2160p links found for this title");
-        return [];
-    }
-
-    const qualityRank = { "2160p": 5, "1080p": 3 };
-    targets.sort((a, b) =>
-        (hiLangTier(a.lang || "") - hiLangTier(b.lang || "")) ||
-        ((qualityRank[b.quality] || 0) - (qualityRank[a.quality] || 0))
-    );
+    const qRank = { "2160p": 5, "1080p": 3 };
+    targets.sort((a, b) => (hiLangTier(a.lang || "") - hiLangTier(b.lang || "")) || ((qRank[b.quality] || 0) - (qRank[a.quality] || 0)));
 
     const results = new Array(targets.length);
     let cursor = 0;
     const runner = async () => {
         while (cursor < targets.length) {
-            const index = cursor++;
-            const target = targets[index];
-            results[index] = await hiResolveSafe(
-                target.workerUrl, target.quality, target.size, target.lang
-            );
+            const idx = cursor++, t = targets[idx];
+            results[idx] = await hiResolveSafe(t.workerUrl, t.quality, t.size, t.lang);
         }
     };
-
     await Promise.all(Array.from({ length: Math.min(2, targets.length) }, runner));
 
-    const rawStreams = dedupe(results.flat().filter(Boolean));
-    dbg(`resolved ${rawStreams.length} direct link(s) from ${targets.length} worker link(s)`);
-
-    // Apply the 1080p cap locally to this request, not through shared global state.
-    let count1080p = 0;
-    const streams = [];
-    for (const raw of rawStreams) {
-        const label = [hiLangLabel(raw.lang), raw.quality, raw.size ? `[${raw.size}]` : ""]
-            .filter(Boolean).join(" ");
-        const stream = makeStream(label, raw.url, raw.quality, {}, "HD", raw.server);
-        if (!stream) continue;
-        if (raw.quality === "1080p" && count1080p >= MAX_1080P) continue;
-        if (raw.quality === "1080p") count1080p++;
-        streams.push(stream);
-    }
-    return dedupeBySize(streams);
+    const raws = dedupe(results.flat().filter(Boolean));
+    dbg(`resolved ${raws.length} direct link(s) from ${targets.length} worker link(s)`);
+    return dedupeBySize(raws.map(r => {
+        const t = [hiLangLabel(r.lang), r.quality, r.size ? "[" + r.size + "]" : ""].filter(Boolean).join(" ");
+        return makeStream(t, r.url, r.quality, { "User-Agent": USER_AGENT }, "HD", r.server);
+    }).filter(Boolean));
 }
 
 async function getStreams(tmdbId, mediaType, season, episode) {
     try {
-        if (!/^\d+$/.test(String(tmdbId))) {
-            dbgWarn("invalid TMDB id");
-            return [];
-        }
-        if (mediaType !== "tv" && mediaType !== "movie") {
-            dbgWarn(`unsupported media type: ${mediaType}`);
-            return [];
-        }
-
+        if (!/^\d+$/.test(String(tmdbId))) return [];
+        if (mediaType !== "tv" && mediaType !== "movie") return [];
         const isTv = mediaType === "tv";
-        if (isTv && (!Number.isInteger(Number(season)) || Number(season) < 0 ||
-            !Number.isInteger(Number(episode)) || Number(episode) < 1)) {
-            dbgWarn("series request has an invalid season or episode");
-            return [];
-        }
-
-        dbg(`start: TMDB ${tmdbId} ${mediaType}${isTv ? ` S${season}E${episode}` : ""}`);
-        const metadata = await getTMDBInfo(tmdbId, mediaType);
-        if (!metadata.title) {
-            dbgWarn("stopping: TMDB did not return a title");
-            return [];
-        }
-
-        const streams = await getHicineStreams(
-            metadata.title, metadata.year, mediaType,
-            isTv ? Number(season) : null, isTv ? Number(episode) : null
-        );
-        dbg(`done: ${streams.length} stream(s)`);
-        return streams;
-    } catch (error) {
-        const detail = error && error.stack ?
-            String(error.stack).split("\n").slice(0, 3).join(" | ") :
-            (error && error.message ? error.message : String(error));
-        dbgWarn(`getStreams crashed: ${detail}`);
+        if (isTv && (season == null || episode == null)) { dbgWarn("series request without season/episode"); return []; }
+        count1080p = 0;
+        dbg(`start: tmdb ${tmdbId} ${mediaType}${isTv ? ` S${season}E${episode}` : ""}`);
+        const { title, year } = await getTMDBInfo(tmdbId, mediaType);
+        const out = await getHicineStreams(title, year, mediaType, isTv ? Number(season) : null, isTv ? Number(episode) : null);
+        dbg(`done: ${out.length} stream(s)`);
+        return out;
+    } catch (e) {
+        dbgWarn(`getStreams crashed: ${e && e.stack ? String(e.stack).split("\n").slice(0, 3).join(" | ") : e}`);
         return [];
     }
 }
